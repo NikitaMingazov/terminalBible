@@ -1,3 +1,7 @@
+/*
+This is a script that creates the files used in my program
+It takes a .txt and creates a "filename".db, a "filename".table(just plaintext) and "filename"Search.db
+*/
 #include <iostream>
 #include <fstream>
 #include <cmath>

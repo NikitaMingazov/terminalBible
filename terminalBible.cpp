@@ -1,10 +1,13 @@
+/*
+A program to access God's Word from the terminal
+
+*/
 #include <unordered_map>
 #include <cstring>
 #include <string>
 #include <sqlite3.h>
 #include <iostream>
 #include <fstream>
-
 /*
 g++ -o terminalBible terminalBible.cpp -lsqlite3
 */
@@ -32,11 +35,13 @@ void populate(std::unordered_map<std::string, int>& ident, std::string filename)
 						index = cur;
 						cur = "";
 					}
+					break;
 				case 1: // ID
 					if (!isdigit(c)) { // end of ID
-						break;
+						break; // this break statement doesn't do what I want it to, but it only matters on faulty input data (e.g. I use "BOOK ID #com" and this extra space will be properly disregarded)
 					}
 					cur += c;
+					break;
 				}
 			}
 			if (cur.length() > 0) {
@@ -89,16 +94,17 @@ void printFirstLetter(const std::string& line) {
 	}
 	std::cout << std::endl;
 }
+// prints to the console verses according to the criteria given
 int query(const char* filename, const char* book, const char* index, int readMode) {
 	sqlite3* db;
-	int rc = sqlite3_open((string(filename)+string(".db")).c_str(), &db);
+	int rc = sqlite3_open((std::string(filename)+std::string(".db")).c_str(), &db);
 	if (rc) {
 		std::cerr << "Can't open database: " << sqlite3_errmsg(db) << std::endl;
 		return 1;
 	}
 
 	std::unordered_map<std::string, int> ident;
-	populate(ident, (string(filename)+string(".table")).c_str());
+	populate(ident, (std::string(filename)+std::string(".table")).c_str());
 
 	int BookID = getBookID(ident, book);
 	if (BookID == -1) {
@@ -112,7 +118,7 @@ int query(const char* filename, const char* book, const char* index, int readMod
 	int limit = 1;
 
 	int state = 0;
-	std::string cur;
+	std::string cur; // parse the index section of the query for the requested chapter and verse(-range)
 	for (int i = 0; i < strlen(index); i++) {
 		char c = index[i];
 		switch (state) {
@@ -202,8 +208,7 @@ int main(int argc, char **argv) { // notes: create a copy mode for referencing, 
 
 		while(true) {
 			std::string line;
-			//std::cout << "Bible reference: ";
-			std::getline(std::cin, line);
+			std::getline(std::cin, line); // ask for input
 			if (line.length() == 0) {
 				std::cout << "No input, program ended" << std::endl;
 				break;
@@ -216,7 +221,7 @@ int main(int argc, char **argv) { // notes: create a copy mode for referencing, 
 				if (c == ' ') { // ignore spaces
 					continue;
 				}
-				if (i == 0) {
+				if (i == 0) { // identify flag if present
 					if (c == 'r') {
 						readMode = 0;
 						continue;
@@ -228,7 +233,7 @@ int main(int argc, char **argv) { // notes: create a copy mode for referencing, 
 				}
 				switch(state) {
 				case 0:
-					if (isdigit(c) && cur.length() > 0) {
+					if (isdigit(c) && cur.length() > 0) { // book name (can start with a digit)
 						book = cur;
 						cur = "";
 						state++;
@@ -236,7 +241,8 @@ int main(int argc, char **argv) { // notes: create a copy mode for referencing, 
 					cur += c;
 					break;
 				case 1:
-					cur += c;
+					cur += c; // chapter onwards 
+					break;
 				}
 			}
 			if (query(filename, book.c_str(), cur.c_str(),readMode) != 0) {
@@ -245,6 +251,6 @@ int main(int argc, char **argv) { // notes: create a copy mode for referencing, 
 		}
 	}
 	else {
-		std::cout << "Missing filename. Enter your primary \".db\" but without the file extension"
+		std::cout << "Missing filename. Enter your primary \".db\" but without the file extension" << std::endl;
 	}
 }
