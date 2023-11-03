@@ -1,8 +1,8 @@
 # terminalBible
 search the Scriptures from a terminal
 
-#Usage directions:
-##To use terminalBible:
+# Usage directions:
+## To use terminalBible:
   To start just do "./terminalBible"
   Then (flag) Bookname Chapter(:verse{-verse})
   Flag can be "r" (default) to output full verses
@@ -16,7 +16,7 @@ search the Scriptures from a terminal
   Verse is optional, as is the "-verse2" for printing a passage
   inter-chapter/book continuation will be added
 
-##To create a Bible instance to read:
+## To create a Bible instance to read:
   Run "./updateSQL t" (currently uses hardcoded filenames) to create a database based on a .txt of the same format as "kjv.txt" present in folder
   (FUTURE FUNCTIONALITY) Run "./updateSQL s" to create a word search database based on the provided database
   (later ./updateSQL st {source.txt} {filename} will do all the setup in one)
