@@ -139,6 +139,9 @@ int query(const char* filename, const char* book, const char* index, int readMod
 				state++;
 				verse = std::stoi(cur);
 				cur = "";
+				if (i == strlen(index) - 1) { // e.g. Job 1:15- prints until end of chapter
+					limit = -1;
+				}
 			} else {
 				cur += c;
 				if (i == strlen(index) - 1) {
@@ -175,15 +178,24 @@ int query(const char* filename, const char* book, const char* index, int readMod
 	if (verse == -1) { // if Book Chapter but no verse, then whole chapter is returned
 		verse = 1;
 		selectQuery = "SELECT body FROM Verses WHERE ChapterID = ?";
-	} else {
+	} 
+	else if (limit == -1) {
+		selectQuery = "SELECT body FROM Verses WHERE ChapterID = ? LIMIT 999999 OFFSET ?";
+	}
+	else {
 		selectQuery = "SELECT body FROM Verses WHERE ChapterID = ? LIMIT ? OFFSET ?";
 	}
 
 	rc = sqlite3_prepare_v2(db, selectQuery.c_str(), -1, &stmt, &tail);
 	rc = sqlite3_bind_int(stmt, 1, ChapterID);
-	//the following should be put in an if statement? but no errors are occuring at present
-	rc = sqlite3_bind_int(stmt, 2, limit);
-	rc = sqlite3_bind_int(stmt, 3, verse - 1);
+	//the following should be put in an if statement for verse == -1's sake? but no errors are occuring at present
+	if (limit == -1) {
+		rc = sqlite3_bind_int(stmt, 2, verse - 1);
+	}
+	else {
+		rc = sqlite3_bind_int(stmt, 2, limit);
+		rc = sqlite3_bind_int(stmt, 3, verse - 1);
+	}
 
 	int increment = 0;
 	while (sqlite3_step(stmt) == SQLITE_ROW) {

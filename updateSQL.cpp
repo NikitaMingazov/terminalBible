@@ -7,6 +7,9 @@ It takes a .txt and creates a "filename".db, a "filename".table(just plaintext) 
 #include <cmath>
 #include <sqlite3.h>
 #include <cstring>
+#include <unordered_map>
+#include <list>
+#include <stack>
 
 /*
 g++ -o updateSQL updateSQL.cpp -lsqlite3
@@ -48,12 +51,89 @@ int charTest(const char* c) {
 	}
 	return 0;
 }
-int updateText(const char* source, const char* filename) {
+int abbreviate(string books[], string abbreviations[]) {
+	stack<list<string>*> open;
+	unordered_map<string, list<string>*> map;
+
+	for (int i = 0; i < 66; i++) { // setting up initial buckets
+		string firstLetter = string(1,books[i][0]);
+		if (map.count(firstLetter) == 0) {
+			list<string> bucket;
+			bucket.push_back(firstLetter);
+			map[firstLetter] = new list<string>(bucket);
+			open.push(map[firstLetter]);
+		}
+		map[firstLetter]->push_back(to_string(i));
+	}
+	while (!open.empty()) { // splitting buckets until each item inside is unique
+		list<string> bucket = *(open.top());
+		open.pop();
+
+		list<string>::iterator it = bucket.begin();
+		if (bucket.size() == 2) { // unique substring
+			string abbrev = *it;
+			it++;
+			abbreviations[stoi(*it)] = abbrev; // buckets are e.g. {"Mal","39"} for the final result for Malachi
+			delete map[abbrev];
+		}
+		else { // more splits required
+			string base = *it;
+			int n = base.length();
+			
+			string temp;
+			for (int i = 1; i < bucket.size(); i++) { // start from position 1
+				it++; // next()
+				string index = *it;
+				int k = 0;
+				string book = books[stoi(index)];
+				for (int j = 0; j < book.length(); j++) { // iterate through the book referenced in the bucket
+					char c = book[j];
+					if (c == ' ') {
+						continue; // skip over spaces
+					}
+					if (k++ == n) { // has reached the next character
+						temp = base + c; // create new substring
+						break;
+					}
+				}
+				if (map.count(temp) == 0) { // substring isn't mapped yet, new bucket
+					list<string> bucket;
+					bucket.push_back(temp);
+					map[temp] = new list<string>(bucket);
+					open.push(map[temp]);
+				}
+				map[temp]->push_back(index);
+			}
+		}
+	}
+	return 0;
+}
+int writeTable(string filename, string abbreviations[], string books[]) {
+	// create and save book mappings
+	ofstream outputFile(filename);
+
+	if (outputFile.is_open()) {
+		outputFile << "# This is a comment" << std::endl;
+		outputFile << "# Each line should either start with \"#\" indicating a comment" << std::endl;
+		outputFile << "# Or have BOOKNAME ID (#COMMENT)" << std::endl;
+		for (int i = 0; i < 66; i++) {
+			outputFile << abbreviations[i] << " " << (i+1) << " #" << books[i] << std::endl;
+		}
+		outputFile << "# Add your own mappings below" << std::endl;
+
+		outputFile.close();
+	} else {
+		std::cerr << "Unable to open the file for writing." << std::endl;
+	}
+	return 0;
+}
+int updateText(const char* source, const char* constFilename) {
 	sqlite3* db;
 	sqlite3_stmt* stmt;
 	const char* sql;
+	string filename = string(constFilename); // to clean up filename code
 	
-	int rc = sqlite3_open((string(filename)+string(".db")).c_str(), &db); // Open or create a SQLite database file named "Bible.db"
+	int rc = sqlite3_open((filename+".db").c_str(), &db); // Open or create a SQLite database file named "Bible.db"
 	
 	// Create the Chapters table
 	sql = "DROP TABLE IF EXISTS Chapters";
@@ -83,13 +163,11 @@ int updateText(const char* source, const char* filename) {
 		string prevBook = "";
 		int prevChapter = -1; 
 		string books[66];
-		string bookTags[66];
 
 		while (getline(inputFile, line)) {
 			string body = "";
 
 			string book = "";
-			string booktag = ""; // temporarily using this until I properly implement my dictionary's parsing
 			string chapter = "";
 
 			int state = 0;
@@ -103,16 +181,12 @@ int updateText(const char* source, const char* filename) {
 								prevBook = book;
 								prevChapter = -1; // forcing a new chapter for single-chapter books
 								books[bookID] = book;
-								bookTags[bookID] = booktag; // temporarily here until properly solved
 								bookID++;
 							}
 							chapter += c;
 							state++;
 						}
 						else { // identifying the book
-							if (c != ' ') {
-								booktag += c; // temporarily using a separate space-free one until I strip it while parsing
-							}
 							book += c;
 						}
 					break;
@@ -178,31 +252,11 @@ int updateText(const char* source, const char* filename) {
 		}
 		inputFile.close();
 
-		string map[66];
-		int booksLen = sizeof(books) / sizeof(books[0]);
-		for (int i = 0; i < booksLen; i++) {
-			string cur = books[i];
-			map[i] = bookTags[i];
-			for (int j = 0; j < booksLen; j++) {
-				//
-			}
-		}
-		// create and save book mappings
-		ofstream outputFile((string(filename)+string(".table")).c_str());
-
-		if (outputFile.is_open()) {
-			outputFile << "# This is a comment" << std::endl;
-			outputFile << "# Each line should either start with \"#\" indicating a comment" << std::endl;
-			outputFile << "# Or have BOOKNAME ID (#COMMENT)" << std::endl;
-			for (int i = 0; i < booksLen; i++) {
-				outputFile << map[i] << " " << (i+1) << " #" << books[i] << std::endl;
-			}
-			outputFile << "# Add your own mappings below" << std::endl;
-
-			outputFile.close();
-		} else {
-			std::cerr << "Unable to open the file for writing." << std::endl;
-		}
+		string abbreviations[66];
+		abbreviate(books, abbreviations);
+		
+		writeTable((filename+".table").c_str(), abbreviations, books);
+		
 	} else {
 		cerr << "Failed to open the file." << endl;
 		sqlite3_close(db);
