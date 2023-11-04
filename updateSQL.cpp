@@ -10,34 +10,116 @@ It takes a .txt and creates a "filename".db, a "filename".table(just plaintext) 
 #include <unordered_map>
 #include <list>
 #include <stack>
+#include <utility>
 
 /*
 g++ -o updateSQL updateSQL.cpp -lsqlite3
 */
 using namespace std;
 
-int updateSearch(const char* filename) {
+int updateSearch(const char* constFilename) {
 	sqlite3* tdb; // input Bible text database
 	sqlite3* sdb; // output search index database
 	sqlite3_stmt* stmt;
 	const char* sql;
+	string filename = string(constFilename); // to clean up filename code
 	// open the Bible text as read-only
-	// this filename extension formatting needs to improve
-	int rc = sqlite3_open_v2((string(filename)+string(".db")).c_str(), &tdb, SQLITE_OPEN_READONLY, nullptr);
+	int rc = sqlite3_open_v2((filename+".db").c_str(), &tdb, SQLITE_OPEN_READONLY, nullptr);
 
-	rc = sqlite3_open((string(filename)+string("Search.db")).c_str(), &sdb);
+	sql = "DROP TABLE IF EXISTS Words";
+	rc = sqlite3_exec(sdb, sql, 0, 0, 0);
+	sql = "CREATE TABLE Words (WordID INT, Word TEXT, PRIMARY KEY (WordID))";
+	rc = sqlite3_exec(sdb, sql, 0, 0, 0);
+	/*sql = "CREATE INDEX Words_WordID_Index ON Words (WordID)"; // creating indexes for efficiency
+	rc = sqlite3_exec(db, sql, 0, 0, 0);*/
 
-	sql = "CREATE TABLE IF NOT EXISTS Words (WordID INT, Word TEXT, PRIMARY KEY (WordID))";
+	sql = "DROP TABLE IF EXISTS WordVerse";
 	rc = sqlite3_exec(sdb, sql, 0, 0, 0);
-	sql = "DELETE FROM Words";
+	sql = "CREATE TABLE WordVerse (WordID INT, VerseID INT, PRIMARY KEY (WordID, VerseID), FOREIGN KEY (WordID) REFERENCES Words(WordID))";
 	rc = sqlite3_exec(sdb, sql, 0, 0, 0);
-	sql = "CREATE TABLE IF NOT EXISTS WordVerse (WordID INT, VerseID INT, PRIMARY KEY (WordID, VerseID))";
+	sql = "CREATE INDEX WordVerse_WordID_Index ON Words (WordID)"; // creating indexes for efficiency
 	rc = sqlite3_exec(sdb, sql, 0, 0, 0);
-	sql = "DELETE FROM WordVerse";
+	sql = "CREATE INDEX WordVerse_VerseID_Index ON Words (VerseID)"; // creating indexes for efficiency
 	rc = sqlite3_exec(sdb, sql, 0, 0, 0);
 
+	sql = "SELECT body, VerseID FROM Verses";
+	stack<pair<int, string>> verses;
+	if (sqlite3_prepare_v2(tdb, sql, -1, &stmt, 0) == SQLITE_OK) {
+		while (sqlite3_step(stmt) == SQLITE_ROW) {
+			const char* body = (const char*)sqlite3_column_text(stmt, 0);
+			int verseID = sqlite3_column_int(stmt, 1);
 
+			verses.push(make_pair(verseID,body));
+
+			//cout << " VerseID: " << verseID << " body: " << body;
+		}
+	}
 	sqlite3_close(tdb);
+
+	// create the search db
+	rc = sqlite3_open((filename+"Search.db").c_str(), &sdb);
+	int wordID = 0;  // Initialize wordID
+
+	while (!verses.empty()) {
+	    pair<int, string> verse = verses.top();
+	    verses.pop();
+
+	    int verseID = verse.first;
+	    string body = verse.second;
+
+	    string word = "";
+	    for (int i = 0; i < body.length(); i++) {
+	        char c = body[i];
+	        if (isalpha(c)) { // Building a word
+	            word += c;
+	            if (i == body.length() - 1) { // If it's the end of the string, process the word
+	                goto insert;
+	            }
+	        } else if (word.length() > 0) { // Word identified
+	            insert:
+	            // Check if the word exists in the Words table
+	            sqlite3_stmt* targetStmt;
+	            const char* targetSql = "SELECT WordID FROM Words WHERE Word = ?";
+	            if (sqlite3_prepare_v2(sdb, targetSql, -1, &targetStmt, 0) == SQLITE_OK) {
+	                sqlite3_bind_text(targetStmt, 1, word.c_str(), -1, SQLITE_STATIC);
+	                int wordForeignKey = -1; // Initialize the foreign key
+
+	                if (sqlite3_step(targetStmt) == SQLITE_ROW) {
+	                    // The word exists in the Words table
+	                    wordForeignKey = sqlite3_column_int(targetStmt, 0);
+	                } else {
+	                    // The word doesn't exist, so insert it into the Words table
+	                    const char* insertWordSql = "INSERT INTO Words (Word) VALUES (?)";
+	                    sqlite3_stmt* insertWordStmt;
+	                    if (sqlite3_prepare_v2(sdb, insertWordSql, -1, &insertWordStmt, 0) == SQLITE_OK) {
+	                        sqlite3_bind_text(insertWordStmt, 1, word.c_str(), -1, SQLITE_STATIC);
+	                        if (sqlite3_step(insertWordStmt) == SQLITE_DONE) {
+	                            wordForeignKey = sqlite3_last_insert_rowid(sdb);
+	                        }
+	                        sqlite3_finalize(insertWordStmt);
+	                    }
+	                }
+	                sqlite3_finalize(targetStmt);
+
+	                // Insert the Word-Verse pairing with the correct foreign key
+	                const char* insertWordVerseSql = "INSERT INTO WordVerse (WordID, VerseID) VALUES (?, ?)";
+	                sqlite3_stmt* insertWordVerseStmt;
+	                if (sqlite3_prepare_v2(sdb, insertWordVerseSql, -1, &insertWordVerseStmt, 0) == SQLITE_OK) {
+	                    sqlite3_bind_int(insertWordVerseStmt, 1, wordForeignKey);
+	                    sqlite3_bind_int(insertWordVerseStmt, 2, verseID);
+	                    if (sqlite3_step(insertWordVerseStmt) != SQLITE_DONE) {
+	                        // Handle any insertion errors if necessary.
+	                    }
+	                    sqlite3_finalize(insertWordVerseStmt);
+	                }
+
+	                //cout << "Word: " << word << " WordID: " << wordForeignKey << " VerseID: " << verseID << " Verse body: " << body << endl;
+	                word = ""; // Clearing once finished
+	            }
+	        }
+	    }
+	}
+
 	sqlite3_close(sdb);
 	return 0;
 }
@@ -51,9 +133,10 @@ int charTest(const char* c) {
 	}
 	return 0;
 }
+// find minimal unique starting substring for the set of book names given
 int abbreviate(string books[], string abbreviations[]) {
-	stack<list<string>*> open;
-	unordered_map<string, list<string>*> map;
+	stack<list<string>*> open; // open buckets
+	unordered_map<string, list<string>*> map; // used to map buckets to their substring
 
 	for (int i = 0; i < 66; i++) { // setting up initial buckets
 		string firstLetter = string(1,books[i][0]);
@@ -77,7 +160,7 @@ int abbreviate(string books[], string abbreviations[]) {
 			delete map[abbrev];
 		}
 		else { // more splits required
-			string base = *it;
+			string base = *it; // current substring and it's length
 			int n = base.length();
 			
 			string temp;
@@ -91,25 +174,25 @@ int abbreviate(string books[], string abbreviations[]) {
 					if (c == ' ') {
 						continue; // skip over spaces
 					}
-					if (k++ == n) { // has reached the next character
+					if (k++ == n) { // has reached the next character to build upon the substring
 						temp = base + c; // create new substring
 						break;
 					}
 				}
-				if (map.count(temp) == 0) { // substring isn't mapped yet, new bucket
+				if (map.count(temp) == 0) { // substring isn't mapped yet, create a new bucket for it
 					list<string> bucket;
 					bucket.push_back(temp);
 					map[temp] = new list<string>(bucket);
 					open.push(map[temp]);
 				}
-				map[temp]->push_back(index);
+				map[temp]->push_back(index); // add Book identifier to respective bucket
 			}
 		}
 	}
 	return 0;
 }
+// save book mappings to a file
 int writeTable(string filename, string abbreviations[], string books[]) {
-	// create and save book mappings
 	ofstream outputFile(filename);
 
 	if (outputFile.is_open()) {
@@ -127,6 +210,7 @@ int writeTable(string filename, string abbreviations[], string books[]) {
 	}
 	return 0;
 }
+// create a database and bookID table based off an input Bible
 int updateText(const char* source, const char* constFilename) {
 	sqlite3* db;
 	sqlite3_stmt* stmt;
@@ -251,7 +335,7 @@ int updateText(const char* source, const char* constFilename) {
 			sqlite3_finalize(stmt);
 		}
 		inputFile.close();
-
+		// generating optimal unique substring matches for books
 		string abbreviations[66];
 		abbreviate(books, abbreviations);
 		

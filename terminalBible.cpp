@@ -8,11 +8,13 @@ A program to access God's Word from the terminal
 #include <sqlite3.h>
 #include <iostream>
 #include <fstream>
+#include <list>
+#include <utility>
 /*
 g++ -o terminalBible terminalBible.cpp -lsqlite3
 */
 // populates the given Book->ID map according to the given filename
-void populate(std::unordered_map<std::string, int>& ident, std::string filename) {
+void populateMap(std::unordered_map<std::string, int>& ident, std::string filename) {
 	std::ifstream inputFile(filename); // "kjv.txt" for KJV, etc.
 	if (inputFile.is_open()) {
 		std::string line;
@@ -55,70 +57,33 @@ void populate(std::unordered_map<std::string, int>& ident, std::string filename)
 	}
 }
 // finds whether the given book name matches an entry in the map
-int getBookID(std::unordered_map<std::string, int>& ident, const char* book) {
+int getBookID(std::unordered_map<std::string, int>& table, const char* book) {
 	std::string search;
 	bool found = false;
 	for (int i = 0; i < strlen(book); i++) {
 		if (book[i] != ' ') {
 			search += book[i];
-			if (ident.count(search) > 0) {
+			if (table.count(search) > 0) {
 				found = true;
 				break;
 			}
 		}
 	}
 	if (found) {
-		return ident[search];
+		return table[search];
 	}
 	else {
 		return -1;
 	}
 }
-// prints the given line, but skips over the second+ letter in each Word
-void printFirstLetter(const std::string& line) {
-	bool newWord = true;
-
-	for (char c : line) {
-		if (c == '[' || c == ']') {
-			continue;
-		}
-		if (std::isalpha(c) && newWord) {
-			std::cout << c;
-			newWord = false;
-		} else if (!std::isalpha(c)) {
-			std::cout << c;
-			if (c == ' ' || c == '\t') {
-				newWord = true;
-			}
-		}
-	}
-	std::cout << std::endl;
-}
-// prints to the console verses according to the criteria given
-int query(const char* filename, const char* book, const char* index, int readMode) {
-	sqlite3* db;
-	int rc = sqlite3_open((std::string(filename)+std::string(".db")).c_str(), &db);
-	if (rc) {
-		std::cerr << "Can't open database: " << sqlite3_errmsg(db) << std::endl;
-		return 1;
-	}
-
-	std::unordered_map<std::string, int> ident;
-	populate(ident, (std::string(filename)+std::string(".table")).c_str());
-
-	int BookID = getBookID(ident, book);
-	if (BookID == -1) {
-		std::cout << "Your book name returns no matches" << std::endl;
-		sqlite3_close(db);
-		return 1;
-	}
-
+// parse the index section of the query for the requested chapter and verse(-range)
+void parseIndex(const char* index, int* results) {
 	int chapter = -1;
 	int verse = -1;
 	int limit = 1;
-
+	
 	int state = 0;
-	std::string cur; // parse the index section of the query for the requested chapter and verse(-range)
+	std::string cur;
 	for (int i = 0; i < strlen(index); i++) {
 		char c = index[i];
 		switch (state) {
@@ -157,6 +122,57 @@ int query(const char* filename, const char* book, const char* index, int readMod
 			break;
 		}
 	}
+	//result = new int[3] {chapter, verse, limit};
+	results[0] = chapter;
+	results[1] = verse;
+	results[2] = limit;
+}
+// prints the given line, but skips over the second+ letter in each Word
+void printFirstLetter(const std::string& line) {
+	bool newWord = true;
+
+	for (char c : line) {
+		if (c == '[' || c == ']') {
+			continue;
+		}
+		if (std::isalpha(c) && newWord) {
+			std::cout << c;
+			newWord = false;
+		} else if (!std::isalpha(c)) {
+			std::cout << c;
+			if (c == ' ' || c == '\t') {
+				newWord = true;
+			}
+		}
+	}
+	std::cout << std::endl;
+}
+// prints to the console verses according to the criteria given
+int query(const char* constFilename, std::list<std::pair<int, std::string>>& queryResults, const char* book, const char* index) {
+	sqlite3* db;
+	std::string filename = std::string(constFilename); // to clean up filename code
+	int rc = sqlite3_open_v2((filename+".db").c_str(), &db, SQLITE_OPEN_READONLY, nullptr);
+	if (rc) {
+		std::cerr << "Can't open database: " << sqlite3_errmsg(db) << std::endl;
+		return 1;
+	}
+	// load Book mapping table
+	std::unordered_map<std::string, int> table;
+	populateMap(table, (filename+".table").c_str());
+	// identify requested book
+	int BookID = getBookID(table, book);
+	if (BookID == -1) {
+		std::cout << "Your book name returns no matches" << std::endl;
+		sqlite3_close(db);
+		return 1;
+	}
+	// parse the given index into usable values
+	int* results = new int[3];
+	parseIndex(index, results);
+	int chapter = results[0];
+	int verse = results[1];
+	int limit = results[2];
+	delete results;
 
 	sqlite3_stmt* stmt;
 	const char* tail;
@@ -179,10 +195,10 @@ int query(const char* filename, const char* book, const char* index, int readMod
 		verse = 1;
 		selectQuery = "SELECT body FROM Verses WHERE ChapterID = ?";
 	} 
-	else if (limit == -1) {
+	else if (limit == -1) { // "verse-"
 		selectQuery = "SELECT body FROM Verses WHERE ChapterID = ? LIMIT 999999 OFFSET ?";
 	}
-	else {
+	else { // "verse-verse2"
 		selectQuery = "SELECT body FROM Verses WHERE ChapterID = ? LIMIT ? OFFSET ?";
 	}
 
@@ -196,24 +212,64 @@ int query(const char* filename, const char* book, const char* index, int readMod
 		rc = sqlite3_bind_int(stmt, 2, limit);
 		rc = sqlite3_bind_int(stmt, 3, verse - 1);
 	}
-
+	// saving query results into the passed list pointer to use in the function that called this
 	int increment = 0;
 	while (sqlite3_step(stmt) == SQLITE_ROW) {
-		std::cout << verse + increment++ << ": "; // print verse number
-		const unsigned char* line = sqlite3_column_text(stmt, 0); // print verse body
-		if (readMode == 0) {
-			std::cout << line << std::endl;
-		} else if (readMode == 1) {
-			printFirstLetter(reinterpret_cast<const char*>(line));
-		}
+		const unsigned char* body = sqlite3_column_text(stmt, 0);
+		queryResults.push_back(std::pair<int, std::string>(verse+increment++, reinterpret_cast<const char*>(body)));
 	}
 	sqlite3_finalize(stmt);
 	sqlite3_close(db);
+	if (increment == 0) {
+		std::cout << "Book identified but no results from your query" << std::endl;	
+		return 1;
+	}
 	return 0;
 }
-
+// given an input string determines where the book and the index are
+void parseReference(std::string line, std::pair<std::string, std::string>& reference, bool flagChange) {
+	std::string cur;
+	std::string book;
+	int state = 0;
+	for (int i = 0 + flagChange; i < line.length(); i++) {
+		char c = line[i];
+		if (c == ' ') { // ignore spaces
+			continue;
+		}
+		switch(state) {
+		case 0:
+			if (isdigit(c) && cur.length() > 0) { // book name (can start with a digit)
+				book = cur;
+				cur = "";
+				state++;
+			}
+			cur += c;
+			break;
+		case 1:
+			cur += c; // chapter onwards 
+			break;
+		}
+	}
+	reference = std::make_pair(book, cur);
+}
+// output query results to console
+void printResults(std::list<std::pair<int, std::string>>& results, int queryMode) {
+	std::list<std::pair<int, std::string>>::iterator it = results.begin();
+	for (int i = 0; i < results.size(); i++) { // iterate through results and print each entry
+		std::pair<int, std::string> verse = *it;
+		int verseNum = verse.first;
+		std::string body = verse.second;
+		std::cout << verseNum << ": ";
+		if (queryMode == 0) {
+			std::cout << body << std::endl;
+		} else if (queryMode == 1) {
+			printFirstLetter(body);
+		}
+		it++;
+	}
+}
 int main(int argc, char **argv) { // notes: create a copy mode for referencing, and remember previous book/mode queried, x- until end of chapter
-	int readMode = 0;
+	int queryMode = 0;
 	const char* filename;
 	if (argc > 1) {
 		filename = argv[1];
@@ -225,39 +281,24 @@ int main(int argc, char **argv) { // notes: create a copy mode for referencing, 
 				std::cout << "No input, program ended" << std::endl;
 				break;
 			}
-			int state = 0;
-			std::string cur;
-			std::string book; // parsing input
-			for (int i = 0; i < line.length(); i++) {
-				char c = line[i];
-				if (c == ' ') { // ignore spaces
-					continue;
-				}
-				if (i == 0) { // identify flag if present
-					if (c == 'r') {
-						readMode = 0;
-						continue;
-					}
-					else if (c == 'm') {
-						readMode = 1;
-						continue;
-					}
-				}
-				switch(state) {
-				case 0:
-					if (isdigit(c) && cur.length() > 0) { // book name (can start with a digit)
-						book = cur;
-						cur = "";
-						state++;
-					}
-					cur += c;
-					break;
-				case 1:
-					cur += c; // chapter onwards 
-					break;
-				}
+			int prevQueryMode = queryMode;
+			if (line[0] == 'r') { // identify flag if present
+				queryMode = 0;
 			}
-			if (query(filename, book.c_str(), cur.c_str(),readMode) != 0) {
+			else if (line[0] == 'm') {
+				queryMode = 1;
+			}
+			else if (line[0] == 's') {
+				queryMode = 2;
+			}
+			std::pair<std::string, std::string> ref; // 
+			parseReference(line, ref, queryMode != prevQueryMode);
+
+			std::list<std::pair<int, std::string>> results; // results of query stored here
+			if (query(filename, results, ref.first.c_str(), ref.second.c_str()) == 0) {
+				printResults(results, queryMode);	
+			}
+			else {
 				std::cout << "An error occured" << std::endl;
 			}
 		}
