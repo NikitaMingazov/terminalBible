@@ -28,10 +28,10 @@ int updateSearch(const char* constFilename) {
 
 	sql = "DROP TABLE IF EXISTS Words";
 	rc = sqlite3_exec(sdb, sql, 0, 0, 0);
-	sql = "CREATE TABLE Words (WordID INT, Word TEXT, PRIMARY KEY (WordID))";
+	sql = "CREATE TABLE Words (WordID INT, Word VARCHAR(40), PRIMARY KEY (WordID))";
 	rc = sqlite3_exec(sdb, sql, 0, 0, 0);
-	/*sql = "CREATE INDEX Words_WordID_Index ON Words (WordID)"; // creating indexes for efficiency
-	rc = sqlite3_exec(db, sql, 0, 0, 0);*/
+	sql = "CREATE INDEX Words_Word_Index ON Words (Word)"; // creating indexes for efficiency
+	rc = sqlite3_exec(sdb, sql, 0, 0, 0);
 
 	sql = "DROP TABLE IF EXISTS WordVerse";
 	rc = sqlite3_exec(sdb, sql, 0, 0, 0);
@@ -50,8 +50,6 @@ int updateSearch(const char* constFilename) {
 			int verseID = sqlite3_column_int(stmt, 1);
 
 			verses.push(make_pair(verseID,body));
-
-			//cout << " VerseID: " << verseID << " body: " << body;
 		}
 	}
 	sqlite3_close(tdb);
@@ -89,10 +87,11 @@ int updateSearch(const char* constFilename) {
 	                    wordForeignKey = sqlite3_column_int(targetStmt, 0);
 	                } else {
 	                    // The word doesn't exist, so insert it into the Words table
-	                    const char* insertWordSql = "INSERT INTO Words (Word) VALUES (?)";
+	                    const char* insertWordSql = "INSERT INTO Words (WordID, Word) VALUES (?, ?)";
 	                    sqlite3_stmt* insertWordStmt;
 	                    if (sqlite3_prepare_v2(sdb, insertWordSql, -1, &insertWordStmt, 0) == SQLITE_OK) {
-	                        sqlite3_bind_text(insertWordStmt, 1, word.c_str(), -1, SQLITE_STATIC);
+	                    	sqlite3_bind_int(insertWordStmt, 1, ++wordID);
+	                        sqlite3_bind_text(insertWordStmt, 2, word.c_str(), -1, SQLITE_STATIC);
 	                        if (sqlite3_step(insertWordStmt) == SQLITE_DONE) {
 	                            wordForeignKey = sqlite3_last_insert_rowid(sdb);
 	                        }
