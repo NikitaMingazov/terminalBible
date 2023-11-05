@@ -289,7 +289,6 @@ int searchBible(const char* constFilename, std::list<std::pair<int, std::string>
 	}
 	sqlite3_finalize(stmt);
 
-	std::cout << WordID << std::endl;
 	std::queue<int> verseIDs;
 	sql = "SELECT VerseID FROM WordVerse WHERE WordID = ?";
 	rc = sqlite3_prepare_v2(searchdb, sql.c_str(), -1, &stmt, &tail);
@@ -308,7 +307,6 @@ int searchBible(const char* constFilename, std::list<std::pair<int, std::string>
 		if (sqlite3_step(stmt) == SQLITE_ROW) {
 			const unsigned char* body = sqlite3_column_text(stmt, 0);
 			queryResults.push_back(std::pair<int, std::string>(VerseID, reinterpret_cast<const char*>(body)));
-			//queryResults.push_back(std::pair<int, std::string>(VerseID, reinterpret_cast<const char*>(body)));
 		}
 		sqlite3_finalize(stmt);
 	}

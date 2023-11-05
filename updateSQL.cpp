@@ -23,8 +23,9 @@ int updateSearch(const char* constFilename) {
 	sqlite3_stmt* stmt;
 	const char* sql;
 	string filename = string(constFilename); // to clean up filename code
-	// open the Bible text as read-only
-	int rc = sqlite3_open_v2((filename+".db").c_str(), &tdb, SQLITE_OPEN_READONLY, nullptr);
+
+	// create the search db
+	int rc = sqlite3_open((filename+"Search.db").c_str(), &sdb);
 
 	sql = "DROP TABLE IF EXISTS Words";
 	rc = sqlite3_exec(sdb, sql, 0, 0, 0);
@@ -37,11 +38,13 @@ int updateSearch(const char* constFilename) {
 	rc = sqlite3_exec(sdb, sql, 0, 0, 0);
 	sql = "CREATE TABLE WordVerse (WordID INT, VerseID INT, PRIMARY KEY (WordID, VerseID), FOREIGN KEY (WordID) REFERENCES Words(WordID))";
 	rc = sqlite3_exec(sdb, sql, 0, 0, 0);
-	sql = "CREATE INDEX WordVerse_WordID_Index ON Words (WordID)"; // creating indexes for efficiency
+	sql = "CREATE INDEX WordVerse_WordID_Index ON WordVerse (WordID)"; // creating indexes for efficiency
 	rc = sqlite3_exec(sdb, sql, 0, 0, 0);
-	sql = "CREATE INDEX WordVerse_VerseID_Index ON Words (VerseID)"; // creating indexes for efficiency
+	sql = "CREATE INDEX WordVerse_VerseID_Index ON WordVerse (VerseID)"; // creating indexes for efficiency
 	rc = sqlite3_exec(sdb, sql, 0, 0, 0);
 
+	// open the Bible text as read-only
+	rc = sqlite3_open_v2((filename+".db").c_str(), &tdb, SQLITE_OPEN_READONLY, nullptr);
 	sql = "SELECT body, VerseID FROM Verses";
 	stack<pair<int, string>> verses;
 	if (sqlite3_prepare_v2(tdb, sql, -1, &stmt, 0) == SQLITE_OK) {
@@ -54,8 +57,6 @@ int updateSearch(const char* constFilename) {
 	}
 	sqlite3_close(tdb);
 
-	// create the search db
-	rc = sqlite3_open((filename+"Search.db").c_str(), &sdb);
 	int wordID = 0;  // Initialize wordID
 
 	while (!verses.empty()) {
@@ -94,6 +95,9 @@ int updateSearch(const char* constFilename) {
 	                        sqlite3_bind_text(insertWordStmt, 2, word.c_str(), -1, SQLITE_STATIC);
 	                        if (sqlite3_step(insertWordStmt) == SQLITE_DONE) {
 	                            wordForeignKey = sqlite3_last_insert_rowid(sdb);
+	                            if (wordForeignKey == 0) {
+	                            	std::cout << "Word: " << word << " GlobalID:" << wordID << std::endl;
+	                            }
 	                        }
 	                        sqlite3_finalize(insertWordStmt);
 	                    }
@@ -106,9 +110,7 @@ int updateSearch(const char* constFilename) {
 	                if (sqlite3_prepare_v2(sdb, insertWordVerseSql, -1, &insertWordVerseStmt, 0) == SQLITE_OK) {
 	                    sqlite3_bind_int(insertWordVerseStmt, 1, wordForeignKey);
 	                    sqlite3_bind_int(insertWordVerseStmt, 2, verseID);
-	                    if (sqlite3_step(insertWordVerseStmt) != SQLITE_DONE) {
-	                        // Handle any insertion errors if necessary.
-	                    }
+	                    sqlite3_step(insertWordVerseStmt);
 	                    sqlite3_finalize(insertWordVerseStmt);
 	                }
 
@@ -375,6 +377,20 @@ int main(int argc, char **argv) { // add filename inputs
 		}
 		else if (string(argv[1]) == "ts") {
 			// do both
+			int result = updateText("kjv.txt","Bible"); // you can have these filenames be input
+			if (result == 0) {
+				cout << "Text update success" << endl;
+				result = updateSearch("Bible");
+				if (result == 0) {
+					cout << "Search update success" << endl;
+				}
+				else {
+					cout << "Search update failure" << endl;
+				}
+			}
+			else {
+				cout << "Text update failure" << endl;
+			}
 		}
 		else {
 			cout << "Unknown function called, refer to \"README.md\"." << endl;
