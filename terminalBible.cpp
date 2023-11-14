@@ -25,7 +25,7 @@ void populateMap(std::unordered_map<std::string, int>& ident, std::string filena
 			std::string cur; // part of the line
 			for (int i = 0; i < line.length(); i++) {
 				char c = line[i];
-				if (c == '#') { // comment detected, finish this line
+				if (c == '#' || c == '[') { // comment detected, finish this line
 					break;
 				}
 				switch(state) {
@@ -57,6 +57,68 @@ void populateMap(std::unordered_map<std::string, int>& ident, std::string filena
 		std::cerr << "Failed to open the file." << std::endl;
 	}
 }
+// populates the given ID->Book map according to the given filename
+void populateNameTable(std::string* ident, std::string filename) {
+	std::ifstream inputFile(filename); // "kjv.txt" for KJV, etc.
+	if (inputFile.is_open()) {
+		std::string line;
+		int i = 0;
+		while (getline(inputFile, line) && i < 66) {
+			std::string cur;
+			bool begun = false;
+			for (int i = 0; i < line.length(); i++) {
+				char c = line[i];
+				if (c == '[') {
+					begun = true;
+					continue;
+				}
+				if (c == ']') { // finish
+					break;
+				}
+				if (begun) {
+					cur += c;
+				}
+			}
+			if (cur.length() > 0) {
+				ident[i++] = cur; // the last thing cur was set to was ID
+			}
+		}
+		inputFile.close();
+	}
+	 else {
+		std::cerr << "Failed to open the file." << std::endl;
+	}
+}
+/* Abbreviation version
+void populateNameTable(std::string* ident, std::string filename) {
+	std::ifstream inputFile(filename); // "kjv.txt" for KJV, etc.
+	if (inputFile.is_open()) {
+		std::string line;
+		int i = 0;
+		while (getline(inputFile, line) && i < 66) {
+			std::string cur;
+			for (int i = 0; i < line.length(); i++) {
+				char c = line[i];
+				if (c == '#' ||) { // comment detected, finish this line
+					break;
+				}
+				if (c != ' ') {
+					cur += c;
+				}
+				else {
+					break;
+				}
+			}
+			if (cur.length() > 0) {
+				ident[i++] = cur; // the last thing cur was set to was ID
+			}
+		}
+		inputFile.close();
+	}
+	 else {
+		std::cerr << "Failed to open the file." << std::endl;
+	}
+}*/
 // finds whether the given book name matches an entry in the map
 int getBookID(std::unordered_map<std::string, int>& table, const char* book) {
 	std::string search;
@@ -149,17 +211,17 @@ void printFirstLetter(const std::string& line) {
 	std::cout << std::endl;
 }
 // prints to the console verses according to the criteria given
-int query(const char* constFilename, std::list<std::pair<int, std::string>>& queryResults, const char* book, const char* index) {
+int query(const char* constDirectory, std::list<std::pair<int, std::string>>& queryResults, const char* book, const char* index) {
 	sqlite3* db;
-	std::string filename = std::string(constFilename); // to clean up filename code
-	int rc = sqlite3_open_v2((filename+".db").c_str(), &db, SQLITE_OPEN_READONLY, nullptr);
+	std::string directory = std::string(constDirectory)+"/"; // to clean up filename code
+	int rc = sqlite3_open_v2((directory+"Bible.db").c_str(), &db, SQLITE_OPEN_READONLY, nullptr);
 	if (rc) {
 		std::cerr << "Can't open database: " << sqlite3_errmsg(db) << std::endl;
 		return 1;
 	}
 	// load Book mapping table
 	std::unordered_map<std::string, int> table;
-	populateMap(table, (filename+".table").c_str());
+	populateMap(table, (directory+"Bible.table").c_str());
 	// identify requested book
 	int BookID = getBookID(table, book);
 	if (BookID == -1) {
@@ -261,7 +323,7 @@ void printResults(std::list<std::pair<int, std::string>>& results, int queryMode
 		int verseNum = verse.first;
 		std::string body = verse.second;
 		std::cout << verseNum << ": ";
-		if (queryMode == 0 || 2) { // temporarily put in 2 here
+		if (queryMode == 0) { // temporarily put in 2 here, later it will have it's own output function
 			std::cout << body << std::endl;
 		} else if (queryMode == 1) {
 			printFirstLetter(body);
@@ -269,58 +331,183 @@ void printResults(std::list<std::pair<int, std::string>>& results, int queryMode
 		it++;
 	}
 }
-int searchBible(const char* constFilename, std::list<std::pair<int, std::string>>& queryResults, std::string search) {
-	sqlite3* textdb;
-	std::string filename = std::string(constFilename); // to clean up filename code
-	int rc = sqlite3_open_v2((filename+".db").c_str(), &textdb, SQLITE_OPEN_READONLY, nullptr);
+// output query results to console (with string rather than verse number)
+void printSearchResults(std::list<std::pair<std::string, std::string>>& results, int queryMode) {
+	std::list<std::pair<std::string, std::string>>::iterator it = results.begin();
+	for (int i = 0; i < results.size(); i++) { // iterate through results and print each entry
+		std::pair<std::string, std::string> verse = *it;
+		std::cout << verse.first << " " << verse.second << std::endl;
+		it++;
+	}
+}
+// turns a word search into a SQL statement and the parameters to fill it
+std::string parseSearchIntoSqlStatement(std::string search, std::queue<std::string>& parameters) {
+	// splitting up the search into it's elements
+	std::queue<std::string> unparsed;
+	std::string substring;
+	for (int i = 0; i < search.length(); i++) {
+		char c = search[i];
+		if (c == '(' || c == ')') {
+			if (substring.length() > 0) {
+				unparsed.push(substring);
+				substring = "";
+			}
+			unparsed.push(std::string(1, c));
+			continue;
+		}
+		if (c == '/' || c == ' ') {
+			if (substring.length() > 0) {
+				unparsed.push(substring);
+			}
+			substring = "";
+		}
+		substring += c;
+		if (substring == "/OR") {
+			unparsed.push("/OR");
+			substring = "";
+		}
+		else if (substring == "/AND" || substring == " ") {
+			unparsed.push("/AND");
+			substring = "";
+		}
+	}
+	if (substring.length() > 0) {
+		unparsed.push(substring);
+		substring = "";
+	}
+	// parsing the list of inputs into SQL, and keeping a log of parameters to later insert
+	std::string WordSelection = "VerseID IN (SELECT VerseID FROM WordVerse WHERE WordID = (SELECT WordID FROM Words WHERE Word = ?))";
+	// I need DISTINCT here because my SQL code is cobbled together and really bad, creates tons of duplicates
+	std::string searchQuery = "SELECT DISTINCT VerseID FROM WordVerse WHERE ";
+	while (!unparsed.empty()) {
+		if (unparsed.front() == "(") {
+			searchQuery += "(";
+		}
+		else if (unparsed.front() == ")") {
+			searchQuery += ")";
+		}
+		else if (unparsed.front() == "/AND") {
+			searchQuery += " AND ";
+		}
+		else if (unparsed.front() == "/OR") {
+			searchQuery += " OR ";
+		}
+		else {
+			searchQuery += WordSelection;
+			parameters.push(unparsed.front());
+		}
+		unparsed.pop();
+	}
+	searchQuery += " ORDER BY VerseID";
+	//std::cout << searchQuery << std::endl;
+	return searchQuery;
+}
+// turns a VerseID into the reference that would return it
+std::string fetchReferenceFromVerseID(sqlite3* textdb, int VerseID, std::string* names) {
+	sqlite3_stmt* stmt;
+	const char* tail;
+	std::string sql;
 
-	sqlite3* searchdb;
-	rc = sqlite3_open_v2((filename+"Search.db").c_str(), &searchdb, SQLITE_OPEN_READONLY, nullptr);
+	int ChapterID = -1;
+	sql = "SELECT ChapterID FROM Verses WHERE VerseID = ?";
+	int rc = sqlite3_prepare_v2(textdb, sql.c_str(), -1, &stmt, &tail);
+	sqlite3_bind_int(stmt, 1, VerseID);
+	if (sqlite3_step(stmt) == SQLITE_ROW) {
+		ChapterID = sqlite3_column_int(stmt, 0);
+	}
+	sqlite3_finalize(stmt);
+
+	int BookID = -1;
+	sql = "SELECT BookID FROM Chapters WHERE ChapterID = ?";
+	rc = sqlite3_prepare_v2(textdb, sql.c_str(), -1, &stmt, &tail);
+	sqlite3_bind_int(stmt, 1, ChapterID);
+	if (sqlite3_step(stmt) == SQLITE_ROW) {
+		BookID = sqlite3_column_int(stmt, 0);
+	}
+	sqlite3_finalize(stmt);
+
+	int chapterOffset = -1;
+	sql = "WITH ChapterOffsets AS ( SELECT BookID, ChapterID, ROW_NUMBER() OVER (PARTITION BY BookID ORDER BY ChapterID) AS ChapterOffset FROM Chapters) SELECT ChapterOffset FROM ChapterOffsets WHERE ChapterID = ?";
+	rc = sqlite3_prepare_v2(textdb, sql.c_str(), -1, &stmt, &tail);
+	sqlite3_bind_int(stmt, 1, ChapterID);
+	if (sqlite3_step(stmt) == SQLITE_ROW) {
+		chapterOffset = sqlite3_column_int(stmt, 0);
+	}
+	sqlite3_finalize(stmt);
+
+	int verseOffset = -1;
+	sql = "WITH VerseOffsets AS ( SELECT ChapterID, VerseID, ROW_NUMBER() OVER (PARTITION BY ChapterID ORDER BY VerseID) AS VerseOffset FROM Verses) SELECT VerseOffset FROM VerseOffsets WHERE VerseID = ?";
+	rc = sqlite3_prepare_v2(textdb, sql.c_str(), -1, &stmt, &tail);
+	sqlite3_bind_int(stmt, 1, VerseID);
+	if (sqlite3_step(stmt) == SQLITE_ROW) {
+		verseOffset = sqlite3_column_int(stmt, 0);
+	}
+	sqlite3_finalize(stmt);
+
+	return names[BookID-1] + "" + std::to_string(chapterOffset) + ":" + std::to_string(verseOffset);
+}
+int searchBible(const char* constDirectory, std::list<std::pair<std::string, std::string>>& queryResults, std::string search) {
+	sqlite3* textdb;
+	std::string directory = std::string(constDirectory)+"/"; // to clean up filename code
+	int rc = sqlite3_open_v2((directory+"Bible.db").c_str(), &textdb, SQLITE_OPEN_READONLY, nullptr);
 
 	sqlite3_stmt* stmt;
 	const char* tail;
 	std::string sql;
-	int WordID = -1;
-	sql = "SELECT WordID FROM Words WHERE Word = ?";
-	rc = sqlite3_prepare_v2(searchdb, sql.c_str(), -1, &stmt, &tail);
-	rc = sqlite3_bind_text(stmt, 1, search.c_str(), -1, SQLITE_STATIC);
-	if (sqlite3_step(stmt) == SQLITE_ROW) {
-		WordID = sqlite3_column_int(stmt, 0);
-	}
-	sqlite3_finalize(stmt);
 
+	sqlite3* searchdb;
+	rc = sqlite3_open_v2((directory+"BibleSearch.db").c_str(), &searchdb, SQLITE_OPEN_READONLY, nullptr);
+	
+	std::queue<std::string> parameters;
+	std::string searchQuery = parseSearchIntoSqlStatement(search, parameters);
+
+	//std::cout << searchQuery << std::endl;
+	// preparing statement with logged parameters
+	rc = sqlite3_prepare_v2(searchdb, searchQuery.c_str(), -1, &stmt, &tail);
+	int counter = 0;
+	while (!parameters.empty()) {
+		rc = sqlite3_bind_text(stmt, ++counter, parameters.front().c_str(), -1, SQLITE_STATIC);
+		//std::cout << counter << ": \"" << parameters.front() << "\"" << std::endl;
+		parameters.pop();
+	}
 	std::queue<int> verseIDs;
-	sql = "SELECT VerseID FROM WordVerse WHERE WordID = ?";
-	rc = sqlite3_prepare_v2(searchdb, sql.c_str(), -1, &stmt, &tail);
-	sqlite3_bind_int(stmt, 1, WordID);
+	//executing query
 	while (sqlite3_step(stmt) == SQLITE_ROW) {
 		verseIDs.push(sqlite3_column_int(stmt, 0));
 	}
 	sqlite3_finalize(stmt);
 
+	sqlite3_close(searchdb);
+
+	std::string* names = new std::string[66];
+	populateNameTable(names, directory+"Bible.table");
+
 	while (!verseIDs.empty()) {
 		int VerseID = verseIDs.front();
-		verseIDs.pop();
+		std::string body;
 		sql = "SELECT body FROM Verses WHERE VerseID = ?";
 		rc = sqlite3_prepare_v2(textdb, sql.c_str(), -1, &stmt, &tail);
 		sqlite3_bind_int(stmt, 1, VerseID);
 		if (sqlite3_step(stmt) == SQLITE_ROW) {
-			const unsigned char* body = sqlite3_column_text(stmt, 0);
-			queryResults.push_back(std::pair<int, std::string>(VerseID, reinterpret_cast<const char*>(body)));
+			body = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)); // const unsigner char*
 		}
 		sqlite3_finalize(stmt);
+
+		std::string reference = fetchReferenceFromVerseID(textdb, VerseID, names);
+
+		queryResults.push_back(std::pair<std::string, std::string>(reference, body));
+		verseIDs.pop();
 	}
 
 
 	sqlite3_close(textdb);
-	sqlite3_close(searchdb);
 	return 0;
 }
 int main(int argc, char **argv) { // notes: create a copy mode for referencing, and remember previous book/mode queried, x- until end of chapter
 	int queryMode = 0;
-	const char* filename;
+	const char* directory;
 	if (argc > 1) {
-		filename = argv[1];
+		directory = argv[1];
 
 		while(true) {
 			std::string line;
@@ -344,7 +531,7 @@ int main(int argc, char **argv) { // notes: create a copy mode for referencing, 
 				parseReference(line, ref, queryMode != prevQueryMode);
 
 				std::list<std::pair<int, std::string>> results; // results of query stored here
-				if (query(filename, results, ref.first.c_str(), ref.second.c_str()) == 0) {
+				if (query(directory, results, ref.first.c_str(), ref.second.c_str()) == 0) {
 					printResults(results, queryMode);	
 				}
 				else {
@@ -353,12 +540,12 @@ int main(int argc, char **argv) { // notes: create a copy mode for referencing, 
 			}
 			else if (queryMode == 2) { // search
 				std::string search;
-				for(int i = 1; i < line.length(); i++) {
+				for(int i = 1; i < line.length(); i++) { // skip first character, because I can't figure how to remember search flag in a user-friendly manner
 					search += line[i];
 				}
-				std::list<std::pair<int, std::string>> results; // results of query stored here
-				searchBible(filename, results, search);
-				printResults(results, queryMode);
+				std::list<std::pair<std::string, std::string>> results; // results of query stored here
+				searchBible(directory, results, search);
+				printSearchResults(results, queryMode);
 			}
 		}
 	}

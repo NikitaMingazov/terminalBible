@@ -11,21 +11,49 @@ It takes a .txt and creates a "filename".db, a "filename".table(just plaintext) 
 #include <list>
 #include <stack>
 #include <utility>
+#include <filesystem>
 
 /*
 g++ -o updateSQL updateSQL.cpp -lsqlite3
 */
 using namespace std;
+namespace fs = std::filesystem;  // Define an alias for the namespace
 
-int updateSearch(const char* constFilename) {
+// alter depending on input format and/or language (not in use yet)
+bool isACharacter(string c) {
+	string nonChars[] = {" ","(",")",",",":",";","-"}; // (KJV/Synodal)
+	for (int i = 0; i < size(nonChars); ++i)
+	{
+		if (c == nonChars[i]) {
+			return false;
+		}
+	}
+	return true;
+}
+// testing for undesired unicode and giving number of chars to skip (present in kjv.txt)
+int charTest(const char* c) {
+	if (!strncmp(c, u8"¶", 2)) { // pilcrows (KJV)
+		return 1; // length of pilcrow - 1
+	}
+	if (!strncmp(c, u8"‹", 2) || !strncmp(c, u8"›", 2)) { // red-letter 'quotations' (KJV)
+		return 2; // length of quotation - 1
+	}
+	return 0;
+}
+int updateSearch(const char* constDirectory) {
 	sqlite3* tdb; // input Bible text database
 	sqlite3* sdb; // output search index database
 	sqlite3_stmt* stmt;
 	const char* sql;
-	string filename = string(constFilename); // to clean up filename code
+
+	if (!fs::exists(fs::path(".") / constDirectory)) {
+		cout << "Folder does not exist" << endl;
+		return 1;
+	}
+	string directory = string(constDirectory)+"/"; // to clean up filename code
 
 	// create the search db
-	int rc = sqlite3_open((filename+"Search.db").c_str(), &sdb);
+	int rc = sqlite3_open((directory+"BibleSearch.db").c_str(), &sdb);
 
 	sql = "DROP TABLE IF EXISTS Words";
 	rc = sqlite3_exec(sdb, sql, 0, 0, 0);
@@ -44,7 +72,7 @@ int updateSearch(const char* constFilename) {
 	rc = sqlite3_exec(sdb, sql, 0, 0, 0);
 
 	// open the Bible text as read-only
-	rc = sqlite3_open_v2((filename+".db").c_str(), &tdb, SQLITE_OPEN_READONLY, nullptr);
+	rc = sqlite3_open_v2((directory+"Bible.db").c_str(), &tdb, SQLITE_OPEN_READONLY, nullptr);
 	sql = "SELECT body, VerseID FROM Verses";
 	stack<pair<int, string>> verses;
 	if (sqlite3_prepare_v2(tdb, sql, -1, &stmt, 0) == SQLITE_OK) {
@@ -124,16 +152,6 @@ int updateSearch(const char* constFilename) {
 	sqlite3_close(sdb);
 	return 0;
 }
-// testing for undesired unicode and giving number of chars to skip (present in kjv.txt)
-int charTest(const char* c) {
-	if (!strncmp(c, u8"¶", 2)) { // pilcrows
-		return 1; // length of pilcrow - 1
-	}
-	if (!strncmp(c, u8"‹", 2) || !strncmp(c, u8"›", 2)) { // red-letter 'quotations'
-		return 2; // length of quotation - 1
-	}
-	return 0;
-}
 // find minimal unique starting substring for the set of book names given
 int abbreviate(string books[], string abbreviations[]) {
 	stack<list<string>*> open; // open buckets
@@ -201,7 +219,7 @@ int writeTable(string filename, string abbreviations[], string books[]) {
 		outputFile << "# Each line should either start with \"#\" indicating a comment" << std::endl;
 		outputFile << "# Or have BOOKNAME ID (#COMMENT)" << std::endl;
 		for (int i = 0; i < 66; i++) {
-			outputFile << abbreviations[i] << " " << (i+1) << " #" << books[i] << std::endl;
+			outputFile << abbreviations[i] << " " << (i+1) << " [" << books[i] << "]" << std::endl;
 		}
 		outputFile << "# Add your own mappings below" << std::endl;
 
@@ -212,13 +230,19 @@ int writeTable(string filename, string abbreviations[], string books[]) {
 	return 0;
 }
 // create a database and bookID table based off an input Bible
-int updateText(const char* source, const char* constFilename) {
+int updateText(const char* source, const char* constDirectory) {
 	sqlite3* db;
 	sqlite3_stmt* stmt;
 	const char* sql;
-	string filename = string(constFilename); // to clean up filename code
+
+	if (!fs::exists(fs::path(".") / constDirectory)) {
+		//fs::remove_all(fs::path(".") / constDirectory);
+		fs::create_directory(fs::path(".") / constDirectory);
+	}
+
+	string directory = string(constDirectory) + "/"; // to clean up filename code
 	
-	int rc = sqlite3_open((filename+".db").c_str(), &db); // Open or create a SQLite database file named "Bible.db"
+	int rc = sqlite3_open((directory+"Bible.db").c_str(), &db); // Open or create a SQLite database file named "Bible.db"
 	
 	// Create the Chapters table
 	sql = "DROP TABLE IF EXISTS Chapters";
@@ -340,7 +364,7 @@ int updateText(const char* source, const char* constFilename) {
 		string abbreviations[66];
 		abbreviate(books, abbreviations);
 		
-		writeTable((filename+".table").c_str(), abbreviations, books);
+		writeTable((directory+"Bible.table").c_str(), abbreviations, books);
 		
 	} else {
 		cerr << "Failed to open the file." << endl;
@@ -358,29 +382,25 @@ int main(int argc, char **argv) { // add filename inputs
 	}
 	else {
 		if (string(argv[1]) == "t") { // update Bible text
-			int result = updateText("kjv.txt","Bible"); // you can have these filenames be input
-			if (result == 0) {
-				cout << "Text update success" << endl;
+			if (argc < 4) {
+				cout << "Missing folder to output text to" << endl;
 			}
-			else {
-				cout << "Text update failure" << endl;
+			else { // presently hardcoded input, update later
+				int result = updateText(argv[2], argv[3]);
+				if (result == 0) {
+					cout << "Text update success" << endl;
+				}
+				else {
+					cout << "Text update failure" << endl;
+				}
 			}
 		}
 		else if (string(argv[1]) == "s") { // update word search index
-			int result = updateSearch("Bible");
-			if (result == 0) {
-				cout << "Search update success" << endl;
+			if (argc < 3) {
+				cout << "Missing folder to insert search DB into" << endl;
 			}
 			else {
-				cout << "Search update failure" << endl;
-			}
-		}
-		else if (string(argv[1]) == "ts") {
-			// do both
-			int result = updateText("kjv.txt","Bible"); // you can have these filenames be input
-			if (result == 0) {
-				cout << "Text update success" << endl;
-				result = updateSearch("Bible");
+				int result = updateSearch(argv[2]);
 				if (result == 0) {
 					cout << "Search update success" << endl;
 				}
@@ -388,8 +408,27 @@ int main(int argc, char **argv) { // add filename inputs
 					cout << "Search update failure" << endl;
 				}
 			}
+		}
+		else if (string(argv[1]) == "ts") {
+			// do both
+			if (argc < 4) {
+				cout << "Missing inputs";
+			}
 			else {
-				cout << "Text update failure" << endl;
+				int result = updateText(argv[2],argv[3]); // you can have these filenames be input
+				if (result == 0) {
+					cout << "Text update success" << endl;
+					result = updateSearch(argv[3]);
+					if (result == 0) {
+						cout << "Search update success" << endl;
+					}
+					else {
+						cout << "Search update failure" << endl;
+					}
+				}
+				else {
+					cout << "Text update failure" << endl;
+				}
 			}
 		}
 		else {
