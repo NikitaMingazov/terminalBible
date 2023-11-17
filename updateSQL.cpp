@@ -216,12 +216,15 @@ int writeTable(string filename, string abbreviations[], string books[]) {
 
 	if (outputFile.is_open()) {
 		outputFile << "# This is a comment" << std::endl;
-		outputFile << "# Each line should either start with \"#\" indicating a comment" << std::endl;
-		outputFile << "# Or have BOOKNAME ID (#COMMENT)" << std::endl;
+		outputFile << "# Line stops being parsed after \"#\" has been seen" << std::endl;
+		outputFile << "# [bookname] is what will be printed out for word searches" << std::endl;
 		for (int i = 0; i < 66; i++) {
 			outputFile << abbreviations[i] << " " << (i+1) << " [" << books[i] << "]" << std::endl;
 		}
 		outputFile << "# Add your own mappings below" << std::endl;
+		outputFile << "# Php 50 #Philippians" << std::endl;
+		outputFile << "# Php 57 #Philemon" << std::endl;
+		outputFile << "# Jdg 7 #Judges" << std::endl;
 
 		outputFile.close();
 	} else {
@@ -232,6 +235,7 @@ int writeTable(string filename, string abbreviations[], string books[]) {
 // create a database and bookID table based off an input Bible
 int updateText(const char* source, const char* constDirectory) {
 	sqlite3* db;
+	sqlite3* partitiondb;
 	sqlite3_stmt* stmt;
 	const char* sql;
 
@@ -243,6 +247,8 @@ int updateText(const char* source, const char* constDirectory) {
 	string directory = string(constDirectory) + "/"; // to clean up filename code
 	
 	int rc = sqlite3_open((directory+"Bible.db").c_str(), &db); // Open or create a SQLite database file named "Bible.db"
+
+	rc = sqlite3_open((directory+"Partitions.db").c_str(), &partitiondb); // Open or create a SQLite database file named "Bible.db"
 	
 	// Create the Chapters table
 	sql = "DROP TABLE IF EXISTS Chapters";
@@ -260,6 +266,21 @@ int updateText(const char* source, const char* constDirectory) {
 	rc = sqlite3_exec(db, sql, 0, 0, 0);
 	sql = "CREATE INDEX Verse_Index ON Verses (VerseID)";
 	rc = sqlite3_exec(db, sql, 0, 0, 0);
+
+	//partition database
+	sql = "DROP TABLE IF EXISTS BookStart";
+	rc = sqlite3_exec(partitiondb, sql, 0, 0, 0);
+	sql = "CREATE TABLE BookStart (BookID INT, ChapterID INT, PRIMARY KEY (BookID))";
+	rc = sqlite3_exec(partitiondb, sql, 0, 0, 0);
+	sql = "CREATE INDEX Chapter_Index ON BookStart (ChapterID)";
+	rc = sqlite3_exec(partitiondb, sql, 0, 0, 0);
+	sql = "DROP TABLE IF EXISTS ChapterStart";
+	rc = sqlite3_exec(partitiondb, sql, 0, 0, 0);
+	sql = "CREATE TABLE ChapterStart (ChapterID INT, VerseID INT, PRIMARY KEY (ChapterID))";
+	rc = sqlite3_exec(partitiondb, sql, 0, 0, 0);
+	sql = "CREATE INDEX Verse_Index ON ChapterStart (VerseID)";
+	rc = sqlite3_exec(partitiondb, sql, 0, 0, 0);
+
 	
 	ifstream inputFile(source); // "kjv.txt" for KJV, etc.
 	if (inputFile.is_open()) {
@@ -287,8 +308,18 @@ int updateText(const char* source, const char* constDirectory) {
 					case 0: // book
 						if (isdigit(c) && i != 0) { // book identified
 							if (!(prevBook == book)) {
+								sql = "INSERT INTO BookStart (BookID, ChapterID) VALUES (?, ?)";
+								rc = sqlite3_prepare_v2(partitiondb, sql, -1, &stmt, 0);
+							
+								sqlite3_bind_int(stmt, 1, bookID+1);
+								sqlite3_bind_int(stmt, 2, chapterID+1);
+								rc = sqlite3_step(stmt);
+								sqlite3_finalize(stmt);
+
+
 								prevBook = book;
 								prevChapter = -1; // forcing a new chapter for single-chapter books
+								book.pop_back(); // pruning " " from the end of Book name
 								books[bookID] = book;
 								bookID++;
 							}
@@ -309,6 +340,14 @@ int updateText(const char* source, const char* constDirectory) {
 					break;
 					case 2: // identified chapter
 						if (prevChapter != stoi(chapter)) {
+							sql = "INSERT INTO ChapterStart (ChapterID, VerseID) VALUES (?, ?)";
+							rc = sqlite3_prepare_v2(partitiondb, sql, -1, &stmt, 0);
+						
+							sqlite3_bind_int(stmt, 1, chapterID+1);
+							sqlite3_bind_int(stmt, 2, verseID+1);
+							rc = sqlite3_step(stmt);
+							sqlite3_finalize(stmt);
+
 							prevChapter = stoi(chapter);
 							// new chapter
 							chapterID++;
