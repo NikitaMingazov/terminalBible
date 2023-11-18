@@ -1,0 +1,18 @@
+CXX = g++
+CXXFLAGS = -std=c++11 -Wall
+LDFLAGS = -lsqlite3
+
+SOURCES = BibleText.cpp terminalBible.cpp BibleSearch.cpp
+OBJECTS = $(SOURCES:.cpp=.o)
+EXECUTABLE = terminalBible.exe
+
+all: $(EXECUTABLE)
+
+$(EXECUTABLE): $(OBJECTS)
+	$(CXX) $(CXXFLAGS) $(OBJECTS) -o $(EXECUTABLE) $(LDFLAGS)
+
+%.o: %.cpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+clean:
+	rm -f $(OBJECTS) $(EXECUTABLE)
