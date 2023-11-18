@@ -170,6 +170,10 @@ int main(int argc, char **argv) { // notes: create a copy mode for referencing, 
 				else if (line[1] == 's') {
 					queryMode = 2;
 				}
+				else {
+					std::cout << "unknown flag attempted" << std::endl;
+					continue;
+				}
 			}
 			if (queryMode == 0 || queryMode == 1) { // reading or memory
 

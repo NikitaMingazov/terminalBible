@@ -19,9 +19,16 @@ g++ -o updateSQL.exe updateSQL.cpp -lsqlite3
 using namespace std;
 namespace fs = std::filesystem;  // Define an alias for the namespace
 
-// alter depending on input format and/or language (not in use yet)
+// alter depending on input format and/or language
+// discerns whether the input character is part of a Word
 bool isACharacter(string c) {
-	string nonChars[] = {" ","(",")",",",":",";","-"}; // (KJV/Synodal)
+	if (isalpha(c[0])) { // (KJV)
+		return true;
+	}
+	if (isdigit(c[0])) { // Song of Solomon chapter 7 has issues in Synodal
+		return false;
+	}
+	string nonChars[] = {" ","(",")",",",".",":",";","-","?","!","„","\""}; // (Synodal)
 	for (int i = 0; i < size(nonChars); ++i)
 	{
 		if (c == nonChars[i]) {
@@ -30,15 +37,45 @@ bool isACharacter(string c) {
 	}
 	return true;
 }
-// testing for undesired unicode and giving number of chars to skip (present in kjv.txt)
-int charTest(const char* c) {
-	if (!strncmp(c, u8"¶", 2)) { // pilcrows (KJV)
-		return 1; // length of pilcrow - 1
+// checks if the character is one to exclude from the BibleText database
+bool isUndesiredCharacter(string c) {
+	if (c == u8"¶") { // pilcrow
+		return true;
 	}
-	if (!strncmp(c, u8"‹", 2) || !strncmp(c, u8"›", 2)) { // red-letter 'quotations' (KJV)
-		return 2; // length of quotation - 1
+	if (c == u8"‹") { // red letter "quotations"
+		return true;
 	}
-	return 0;
+	if (c == u8"›") {
+		return true;
+	}
+	return false;
+}
+int getCodePointSize(const std::string& utf8String, size_t index) {
+	unsigned char firstByte = static_cast<unsigned char>(utf8String[index]);
+
+	if (firstByte < 0b10000000) {
+		// Single-byte character (0*)
+		return 1;
+	} else if (firstByte < 0b11100000) {
+		// Two-byte character (110*)
+		return 2;
+	} else if (firstByte < 0b11110000) {
+		// Three-byte character (1110*)
+		return 3;
+	} else {
+		// Four-byte character (11110*)
+		return 4;
+	}
+}
+std::string readUtf8Character(const std::string& utf8String, size_t& index) {
+	std::string character;
+
+	int length = getCodePointSize(utf8String, index);
+	for (size_t i = 0; i < length; i++) {
+		character += utf8String[index];
+		index++;
+	}
+	return character;
 }
 int updateSearch(const char* constDirectory) {
 	sqlite3* tdb; // input Bible text database
@@ -73,12 +110,12 @@ int updateSearch(const char* constDirectory) {
 
 	// open the Bible text as read-only
 	rc = sqlite3_open_v2((directory+"Bible.db").c_str(), &tdb, SQLITE_OPEN_READONLY, nullptr);
-	sql = "SELECT body, VerseID FROM Verses";
+	sql = "SELECT VerseID, body FROM Verses";
 	stack<pair<int, string>> verses;
 	if (sqlite3_prepare_v2(tdb, sql, -1, &stmt, 0) == SQLITE_OK) {
 		while (sqlite3_step(stmt) == SQLITE_ROW) {
-			const char* body = (const char*)sqlite3_column_text(stmt, 0);
-			int verseID = sqlite3_column_int(stmt, 1);
+			int verseID = sqlite3_column_int(stmt, 0);
+			const char* body = (const char*)sqlite3_column_text(stmt, 1);
 
 			verses.push(make_pair(verseID,body));
 		}
@@ -95,9 +132,9 @@ int updateSearch(const char* constDirectory) {
 	    string body = verse.second;
 
 	    string word = "";
-	    for (int i = 0; i < body.length(); i++) {
-	        char c = body[i];
-	        if (isalpha(c)) { // Building a word
+	    for (size_t i = 0; i < body.length();) {
+	        string c = readUtf8Character(body, i);
+	        if (isACharacter(c)) { // Building a word
 	            word += c;
 	            if (i == body.length() - 1) { // If it's the end of the string, process the word
 	                goto insert;
@@ -141,7 +178,6 @@ int updateSearch(const char* constDirectory) {
 	                    sqlite3_step(insertWordVerseStmt);
 	                    sqlite3_finalize(insertWordVerseStmt);
 	                }
-
 	                //cout << "Word: " << word << " WordID: " << wordForeignKey << " VerseID: " << verseID << " Verse body: " << body << endl;
 	                word = ""; // Clearing once finished
 	            }
@@ -158,7 +194,8 @@ int abbreviate(string books[], string abbreviations[]) {
 	unordered_map<string, list<string>*> map; // used to map buckets to their substring
 
 	for (int i = 0; i < 66; i++) { // setting up initial buckets
-		string firstLetter = string(1,books[i][0]);
+		size_t temp = 0;
+		string firstLetter = readUtf8Character(books[i], temp);
 		if (map.count(firstLetter) == 0) {
 			list<string> bucket;
 			bucket.push_back(firstLetter);
@@ -188,12 +225,13 @@ int abbreviate(string books[], string abbreviations[]) {
 				string index = *it;
 				int k = 0;
 				string book = books[stoi(index)];
-				for (int j = 0; j < book.length(); j++) { // iterate through the book referenced in the bucket
-					char c = book[j];
-					if (c == ' ') {
+				for (size_t j = 0; j < book.length();) { // iterate through the book referenced in the bucket
+					string c = readUtf8Character(book, j);
+					if (c == " ") {
+						k++;
 						continue; // skip over spaces
 					}
-					if (k++ == n) { // has reached the next character to build upon the substring
+					if (j - k > n) { // has reached the next character to build upon the substring
 						temp = base + c; // create new substring
 						break;
 					}
@@ -235,7 +273,6 @@ int writeTable(string filename, string abbreviations[], string books[]) {
 // create a database and bookID table based off an input Bible
 int updateText(const char* source, const char* constDirectory) {
 	sqlite3* db;
-	sqlite3* partitiondb;
 	sqlite3_stmt* stmt;
 	const char* sql;
 
@@ -247,8 +284,6 @@ int updateText(const char* source, const char* constDirectory) {
 	string directory = string(constDirectory) + "/"; // to clean up filename code
 	
 	int rc = sqlite3_open((directory+"Bible.db").c_str(), &db); // Open or create a SQLite database file named "Bible.db"
-
-	rc = sqlite3_open((directory+"Partitions.db").c_str(), &partitiondb); // Open or create a SQLite database file named "Bible.db"
 	
 	// Create the Chapters table
 	sql = "DROP TABLE IF EXISTS Chapters";
@@ -266,21 +301,6 @@ int updateText(const char* source, const char* constDirectory) {
 	rc = sqlite3_exec(db, sql, 0, 0, 0);
 	sql = "CREATE INDEX Verse_Index ON Verses (VerseID)";
 	rc = sqlite3_exec(db, sql, 0, 0, 0);
-
-	//partition database
-	sql = "DROP TABLE IF EXISTS BookStart";
-	rc = sqlite3_exec(partitiondb, sql, 0, 0, 0);
-	sql = "CREATE TABLE BookStart (BookID INT, ChapterID INT, PRIMARY KEY (BookID))";
-	rc = sqlite3_exec(partitiondb, sql, 0, 0, 0);
-	sql = "CREATE INDEX Chapter_Index ON BookStart (ChapterID)";
-	rc = sqlite3_exec(partitiondb, sql, 0, 0, 0);
-	sql = "DROP TABLE IF EXISTS ChapterStart";
-	rc = sqlite3_exec(partitiondb, sql, 0, 0, 0);
-	sql = "CREATE TABLE ChapterStart (ChapterID INT, VerseID INT, PRIMARY KEY (ChapterID))";
-	rc = sqlite3_exec(partitiondb, sql, 0, 0, 0);
-	sql = "CREATE INDEX Verse_Index ON ChapterStart (VerseID)";
-	rc = sqlite3_exec(partitiondb, sql, 0, 0, 0);
-
 	
 	ifstream inputFile(source); // "kjv.txt" for KJV, etc.
 	if (inputFile.is_open()) {
@@ -301,22 +321,12 @@ int updateText(const char* source, const char* constDirectory) {
 			string chapter = "";
 
 			int state = 0;
-			for (int i = 0; i < line.length(); i++) {
-				char c = line[i];
-				int charSkip = 0;
+			for (size_t i = 0; i < line.length();) {
+				string c = readUtf8Character(line, i);
 				switch(state) {
 					case 0: // book
-						if (isdigit(c) && i != 0) { // book identified
+						if (isdigit(c[0]) && i != 1) { // book identified
 							if (!(prevBook == book)) {
-								sql = "INSERT INTO BookStart (BookID, ChapterID) VALUES (?, ?)";
-								rc = sqlite3_prepare_v2(partitiondb, sql, -1, &stmt, 0);
-							
-								sqlite3_bind_int(stmt, 1, bookID+1);
-								sqlite3_bind_int(stmt, 2, chapterID+1);
-								rc = sqlite3_step(stmt);
-								sqlite3_finalize(stmt);
-
-
 								prevBook = book;
 								prevChapter = -1; // forcing a new chapter for single-chapter books
 								book.pop_back(); // pruning " " from the end of Book name
@@ -331,7 +341,7 @@ int updateText(const char* source, const char* constDirectory) {
 						}
 					break;
 					case 1: // identifying chapter
-						if (c == ':') {
+						if (c == ":") {
 							state++;
 						}
 						else {
@@ -340,14 +350,6 @@ int updateText(const char* source, const char* constDirectory) {
 					break;
 					case 2: // identified chapter
 						if (prevChapter != stoi(chapter)) {
-							sql = "INSERT INTO ChapterStart (ChapterID, VerseID) VALUES (?, ?)";
-							rc = sqlite3_prepare_v2(partitiondb, sql, -1, &stmt, 0);
-						
-							sqlite3_bind_int(stmt, 1, chapterID+1);
-							sqlite3_bind_int(stmt, 2, verseID+1);
-							rc = sqlite3_step(stmt);
-							sqlite3_finalize(stmt);
-
 							prevChapter = stoi(chapter);
 							// new chapter
 							chapterID++;
@@ -363,20 +365,17 @@ int updateText(const char* source, const char* constDirectory) {
 						state++;
 					break;
 					case 3: // finding verse start
-						charSkip = charTest(&line[i]); // checking if an undesired unicode (¶) has appeared
-						if (charSkip > 0) {
-							i += charSkip;
+						// checking if an undesired unicode (e.g. ¶) has appeared
+						if (isUndesiredCharacter(c)) {
 							continue;
 						}						
-						if (c != ' ' && !isdigit(c)) { // verse start found
+						if (c != " " && !isdigit(c[0])) { // verse start found
 							body += c;
 							state++;
 						}
 					break;
 					case 4: // verse
-						charSkip = charTest(&line[i]); // checking if an undesired unicode (‹›) has appeared
-						if (charSkip > 0) {
-							i += charSkip;
+						if (isUndesiredCharacter(c)) {
 							continue;
 						}
 						body += c;
