@@ -2,6 +2,33 @@
 
 #include <iostream>
 
+inline size_t getCodePointSize(const std::string& utf8String, size_t index) {
+	unsigned char firstByte = static_cast<unsigned char>(utf8String[index]);
+
+	if (firstByte < 0b10000000) {
+		// Single-byte character (0*)
+		return 1;
+	} else if (firstByte < 0b11100000) {
+		// Two-byte character (110*)
+		return 2;
+	} else if (firstByte < 0b11110000) {
+		// Three-byte character (1110*)
+		return 3;
+	} else {
+		// Four-byte character (11110*)
+		return 4;
+	}
+}
+inline std::string readUtf8Character(const std::string& utf8String, size_t& index) {
+	std::string character;
+
+	size_t length = getCodePointSize(utf8String, index);
+	for (size_t i = 0; i < length; i++) {
+		character += utf8String[index];
+		index++;
+	}
+	return character;
+}
 BibleSearch::BibleSearch(const char* inputDir) {
 	std::string directory = std::string(inputDir)+"/";
 
@@ -19,17 +46,17 @@ std::string BibleSearch::parseSearchIntoSqlStatement(std::string search, std::qu
 	// splitting up the search into it's elements
 	std::queue<std::string> unparsed;
 	std::string substring;
-	for (size_t i = 0; i < search.length(); i++) {
-		char c = search[i];
-		if (c == '(' || c == ')') {
+	for (size_t i = 0; i < search.length();) {
+		std::string c = readUtf8Character(search, i);
+		if (c == "(" || c == ")") {
 			if (substring.length() > 0) {
 				unparsed.push(substring);
 				substring = "";
 			}
-			unparsed.push(std::string(1, c));
+			unparsed.push(c);
 			continue;
 		}
-		if (c == '/' || c == ' ') { // new word
+		if (c == "/" || c == " ") { // new word
 			if (substring.length() > 0) {
 				unparsed.push(substring);
 			}

@@ -49,6 +49,34 @@ void populateNameTable(std::string* ident, std::string filename) {
 	}
 }*/
 
+inline size_t getCodePointSize(const std::string& utf8String, size_t index) {
+	unsigned char firstByte = static_cast<unsigned char>(utf8String[index]);
+
+	if (firstByte < 0b10000000) {
+		// Single-byte character (0*)
+		return 1;
+	} else if (firstByte < 0b11100000) {
+		// Two-byte character (110*)
+		return 2;
+	} else if (firstByte < 0b11110000) {
+		// Three-byte character (1110*)
+		return 3;
+	} else {
+		// Four-byte character (11110*)
+		return 4;
+	}
+}
+inline std::string readUtf8Character(const std::string& utf8String, size_t& index) {
+	std::string character;
+
+	size_t length = getCodePointSize(utf8String, index);
+	for (size_t i = 0; i < length; i++) {
+		character += utf8String[index];
+		index++;
+	}
+	return character;
+}
+
 // in the given line, skips over the second+ letter in each Word
 std::string firstLetterOfEachWord(const std::string& line) {
 	std::string output;
@@ -183,14 +211,14 @@ int main(int argc, char **argv) { // notes: create a copy mode for referencing, 
 				std::string second = "";
 				std::tuple<std::string, int, int> ref; // parse the reference from the input line
 				int state = 0;
-				for (unsigned int i = skipFlag; i < line.length(); i++) {
-					char c = line[i];
+				for (unsigned int i = 0; i < line.length(); i++) {
+					char c = line[i + skipFlag];
 					if (c == ' ') {
 						continue;
 					}
 					switch(state) {
 					case 0:
-						if (c == '-') {
+						if (c == '-' && i != 1) { // Synodal has 1-E Иоанна e.g.
 							state++;
 							second += c;
 							break;
@@ -214,8 +242,8 @@ int main(int argc, char **argv) { // notes: create a copy mode for referencing, 
 			}
 			else if (queryMode == 2) { // search
 				std::string search;
-				for(unsigned int i = skipFlag; i < line.length(); i++) { // skip first character, because I can't figure how to remember search flag in a user-friendly manner
-					search += line[i];
+				for (size_t i = skipFlag; i < line.length();) { // skip first character, because I can't figure how to remember search flag in a user-friendly manner
+					search += readUtf8Character(line, i);
 				}
 				searchAndOutputToConsole(directory, search);
 			}
