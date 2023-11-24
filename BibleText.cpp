@@ -341,23 +341,24 @@ int BibleText::query(std::queue<int>& queryResults, std::string line) {
 
 	int rangeStart;
 
+	std::string input;
 	std::string output;
 	int book = -1;
 	int chapter = -1;
 	int verse = -1;
 	int state = 0;
 	for (size_t i = 0; i < line.length();) {
-		std::string input = readUtf8Character(line, i);
+		input = readUtf8Character(line, i);
 		if (input == " ") {
 			continue;
 		}
 		//std::cout << "State: " << state << " Input: " << input << " Output: " << output << std::endl;
 		switch(state) { // FSM
-		case 0:
+		case 0: // Book (ignore first digit)
 			output += input;
 			state = 1;
 			break;
-		case 1:
+		case 1: // Book
 			if (regexMatch(input, "[1-9]")) {
 				state = 2;
 				book = getBookID(output);
@@ -371,11 +372,18 @@ int BibleText::query(std::queue<int>& queryResults, std::string line) {
 				output = "";
 				chapter = 1;
 			}
+			else if (regexMatch(input, ";")) {
+				state = 10;
+				book = getBookID(output);
+				output = "";
+				chapter = 1;
+				handleFSMOutput(queryResults, std::make_tuple(book,chapter,verse), rangeStart);
+			}
 			else {
 				output += input;
 			}
 			break;
-		case 2:
+		case 2: // Chapter
 			chapter:
 			if (regexMatch(input, "[0-9]")) {
 				output += input;
@@ -403,13 +411,13 @@ int BibleText::query(std::queue<int>& queryResults, std::string line) {
 				goto error;
 			}
 			break;
-		case 3:
+		case 3: // Chapter -> Verse intermediary
 			if (regexMatch(input, "[1-9]")) {
 				state = 4;
 				output += input;
 			}
 			break;
-		case 4:
+		case 4: // Verse
 			if (regexMatch(input, "[0-9]")) {
 				output += input;
 			}
@@ -438,13 +446,13 @@ int BibleText::query(std::queue<int>& queryResults, std::string line) {
 				verse = -1;
 			}
 			break;
-		case 5:
+		case 5: // Verse range intermediary
 			if (regexMatch(input, "[1-9]")) {
 				state = 6;
 				output += input;
 			}
 			break;
-		case 6:
+		case 6: // Verse continuation (can be chapter or chapter:verse)
 			if (regexMatch(input, "[0-9]")) {
 				output += input;
 			}
@@ -471,19 +479,19 @@ int BibleText::query(std::queue<int>& queryResults, std::string line) {
 				output = "";
 			}
 			break;
-		case 7:
+		case 7: // verse comma
 			if (regexMatch(input, "[1-9]")) {
 				state = 4;
 				output += input;
 			}
 			break;
-		case 8:
+		case 8: // chapter continuation
 			if (regexMatch(input, "[1-9]")) {
 				state = 9;
 				output += input;
 			}
 			break;
-		case 9:
+		case 9: // second chapter in range
 			if (regexMatch(input, "[0-9]")) {
 				output += input;
 			}
@@ -502,15 +510,30 @@ int BibleText::query(std::queue<int>& queryResults, std::string line) {
 				verse = -1;
 			}
 			break;
-		case 10:
-			// temporarily disabled choosing another book
-			chapter = -1;
-			verse = -1;
-			rangeStart = -1;
-			state = 2;
-			goto chapter;
+		case 10: // new reference, figuring out if Book or chapter
+			// I know this violates FSM, but I'm implementing non-determinism, deterministically
+			if (regexMatch(input, "[a-z|A-Z]")) { // implement isCharacter(string c) to use ';' for other languages
+				output += input;
+				state = 1;
+				book = -1;
+				chapter = -1;
+				verse = -1;
+				rangeStart = -1;
+			}
+			else if (regexMatch(input, "[0-9]")) {
+				output += input;
+				if (output.length() > 1) {
+					state = 2;
+					chapter = -1;
+					verse = -1;
+					rangeStart = -1;
+				}
+			}
+			else if (regexMatch(input, "[:]") || regexMatch(input, "[-]")) {
+				goto chapter; // epsilon transition
+			}
 			break;
-		case 11:
+		case 11: // if S6 was chapter, this is verse
 			if (regexMatch(input, "[0-9]")) {
 				output += input;
 			}
@@ -534,7 +557,16 @@ int BibleText::query(std::queue<int>& queryResults, std::string line) {
 			break;
 		}
 	}
+	if (state == 10 && output.length() > 0) {
+		state = 2; // if a chapter is loaded into state 10, epsilon to 2 at termination
+	}
+	// cleaning up outputs on the accepting states
 	switch (state) {
+	case 1:
+		book = getBookID(output);
+		chapter = 1;
+		handleFSMOutput(queryResults, std::make_tuple(book,chapter,verse), rangeStart);
+		break;
 	case 2:
 	case 9:
 		chapter = stoi(output);
@@ -557,7 +589,7 @@ int BibleText::query(std::queue<int>& queryResults, std::string line) {
 	}
 	if (false) {
 		error:
-		std::cout << "Error in FSM execution" << std::endl;
+		std::cout << "Error in FSM execution, State: " << state << " Input: " << input << " Output: " << output << std::endl;
 		return 1;
 	}
 	return 0;
