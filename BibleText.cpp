@@ -7,8 +7,10 @@
 #include <ctime>      // for std::time_t, std::tm
 #include <cctype>     // for std::isalpha
 #include <list>       // for std::list
+#include <regex>
+#include <tuple>
 
-std::string BibleText::getTime() {
+inline std::string getTime() {
 	auto currentTimePoint = std::chrono::system_clock::now();
 
     // Convert the time point to a time_t (Unix timestamp)
@@ -24,10 +26,37 @@ std::string BibleText::getTime() {
     // Print the human-readable timestamp
     return buffer;
 }
-void BibleText::logError(const std::string& message) {
+inline void logError(const std::string& message) {
 	std::ofstream logfile("error.log", std::ios_base::app);
 	logfile << message << " (" << getTime() << ")" << std::endl;
 	logfile.close();
+}
+inline size_t getCodePointSize(const std::string& utf8String, size_t index) {
+	unsigned char firstByte = static_cast<unsigned char>(utf8String[index]);
+
+	if (firstByte < 0b10000000) {
+		// Single-byte character (0*)
+		return 1;
+	} else if (firstByte < 0b11100000) {
+		// Two-byte character (110*)
+		return 2;
+	} else if (firstByte < 0b11110000) {
+		// Three-byte character (1110*)
+		return 3;
+	} else {
+		// Four-byte character (11110*)
+		return 4;
+	}
+}
+inline std::string readUtf8Character(const std::string& utf8String, size_t& index) {
+	std::string character;
+
+	size_t length = getCodePointSize(utf8String, index);
+	for (size_t i = 0; i < length; i++) {
+		character += utf8String[index];
+		index++;
+	}
+	return character;
 }
 // provided one int input parameter with int output expected, runs provided sql query on provided database
 int BibleText::oneIntInputOneIntOutput(const char* sql, int input) {
@@ -157,12 +186,13 @@ int BibleText::chapterEndVerseIDFromVerseID(int VerseID) {
 
 	return oneIntInputOneIntOutput(sql.c_str(), VerseID);
 }
-int BibleText::verseIDFromReference(std::tuple<std::string, int, int> ref) {
+int BibleText::verseIDFromReference(std::tuple<int, int, int> ref) {
 	// identify requested book
-	int BookID = getBookID(std::get<0>(ref));
+	/*int BookID = getBookID(names[std::get<0>(ref)-1]);
 	if (BookID == -1) {
 		std::cout << "Your book name returns no matches" << std::endl;
-	}
+	}*/
+	int BookID = std::get<0>(ref);
 
 	int ChapterID = chapterIDFromBookIDandOffset(BookID, std::get<1>(ref));
 
@@ -174,7 +204,7 @@ int BibleText::verseIDFromReference(std::tuple<std::string, int, int> ref) {
 	return VerseID;
 }
 // turns a VerseID into the reference that would return it
-void BibleText::fetchReferenceFromVerseID(int VerseID, std::tuple<std::string, int, int>& reference) {
+void BibleText::fetchReferenceFromVerseID(int VerseID, std::tuple<int, int, int>& reference) {
 
 	int ChapterID = chapterIDFromVerseID(VerseID);
 
@@ -184,7 +214,7 @@ void BibleText::fetchReferenceFromVerseID(int VerseID, std::tuple<std::string, i
 
 	int verseOffset = verseOffsetFromChapterAndVerseID(ChapterID, VerseID);
 
-	reference = make_tuple(names[BookID-1], chapterOffset, verseOffset);
+	reference = std::make_tuple(BookID, chapterOffset, verseOffset);
 }
 // populates the given Book->ID map according to the given filename
 void BibleText::populateMap(std::string filename) {
@@ -283,62 +313,263 @@ BibleText::~BibleText() {
 	delete[] names;
 	sqlite3_close(textdb);
 }
-// prints to the console verses according to the criteria given
-int BibleText::query(std::queue<int>& queryResults, std::tuple<std::string, int, int> ref, std::string end) {
-
+bool regexMatch(std::string input, std::string pattern) {
+	return std::regex_match(input, std::regex(pattern));
+}
+void BibleText::handleFSMOutput(std::queue<int>& queryResults, std::tuple<int, int, int> ref, int &rangeStart) {
 	int VerseID = verseIDFromReference(ref);
-	
-	if (end.length() == 1 || std::get<2>(ref) == -1) { // end == "-" or Genesis 1
+	if (VerseID == -1) {
+		std::cout << "No match found for " << names[std::get<0>(ref)-1] << " " << std::get<1>(ref) << ":" << std::get<2>(ref) << std::endl;
+		return;
+	}
+	if (rangeStart != -1) {
+		for (int i = rangeStart; i < VerseID; i++) { // do while?
+			queryResults.push(i);
+		}
+		rangeStart = -1;
+	}
+	queryResults.push(VerseID);
+	if (std::get<2>(ref) == -1) { // whole chapter
 		int EndID = chapterEndVerseIDFromVerseID(VerseID);
-		for (int i = VerseID; i <= EndID; i++) {
+		for (int i = VerseID + 1; i < EndID; i++) {
 			queryResults.push(i);
 		}
 	}
-	else if (end.length() == 0) { // single verse
-		queryResults.push(VerseID);
-	} 
-	else { // specified range of verses
-		std::string cur;
-		int chapter = -1;
-		int verse = -1;
-		int state = 0;
-		for (unsigned int i = 1; i < end.length(); i++) {
-			char c = end[i];
-			switch (state) {
-			case 0:
-				if (c == ':') {
-					chapter = stoi(cur);
-					cur = "";
-					state++;
-				}
-				else {
-					cur += c;
-					if (i == end.length() - 1) { // no chapter portion
-						chapter = std::get<1>(ref);
-						verse = stoi(cur);
-					}
-				}
-				break;
-			case 1:
-				cur += c;
-				if (i == end.length() - 1) { // no chapter portion
-					verse = stoi(cur);
-				}
-				break;
+}
+// prints to the console verses according to the criteria given
+int BibleText::query(std::queue<int>& queryResults, std::string line) {
+
+	int rangeStart;
+
+	std::string output;
+	int book = -1;
+	int chapter = -1;
+	int verse = -1;
+	int state = 0;
+	for (size_t i = 0; i < line.length();) {
+		std::string input = readUtf8Character(line, i);
+		if (input == " ") {
+			continue;
+		}
+		//std::cout << "State: " << state << " Input: " << input << " Output: " << output << std::endl;
+		switch(state) { // FSM
+		case 0:
+			output += input;
+			state = 1;
+			break;
+		case 1:
+			if (regexMatch(input, "[1-9]")) {
+				state = 2;
+				book = getBookID(output);
+				output = input; //entry to new state
+				chapter = -1;
+				verse = -1;
 			}
+			else if (regexMatch(input, ":")) {
+				state = 3;
+				book = getBookID(output);
+				output = "";
+				chapter = 1;
+			}
+			else {
+				output += input;
+			}
+			break;
+		case 2:
+			chapter:
+			if (regexMatch(input, "[0-9]")) {
+				output += input;
+			}
+			else if (input == ":") {
+				state = 3;
+				chapter = stoi(output);
+				output = "";
+			}
+			else if (input == "-") {
+				state = 8;
+				chapter = stoi(output);
+				output = "";
+
+				rangeStart = verseIDFromReference(std::make_tuple(book,chapter,verse));
+			}
+			else if (input == ";") {
+				state = 10;
+				chapter = stoi(output);
+				output = "";
+
+				handleFSMOutput(queryResults, std::make_tuple(book,chapter,verse), rangeStart);
+			}
+			else {
+				goto error;
+			}
+			break;
+		case 3:
+			if (regexMatch(input, "[1-9]")) {
+				state = 4;
+				output += input;
+			}
+			break;
+		case 4:
+			if (regexMatch(input, "[0-9]")) {
+				output += input;
+			}
+			else if (regexMatch(input, "[-]")) {
+				state = 5;
+				verse = stoi(output);
+				output = "";
+
+				rangeStart = verseIDFromReference(std::make_tuple(book,chapter,verse));
+			}
+			else if (regexMatch(input, "[,]")) {
+				state = 7;
+				verse = stoi(output);
+				output = "";
+
+				handleFSMOutput(queryResults, std::make_tuple(book,chapter,verse), rangeStart);
+				verse = -1;
+			}
+			else if (regexMatch(input, "[;]")) {
+				state = 10;
+				verse = stoi(output);
+				output = "";
+
+				handleFSMOutput(queryResults, std::make_tuple(book,chapter,verse), rangeStart);
+				chapter = -1;
+				verse = -1;
+			}
+			break;
+		case 5:
+			if (regexMatch(input, "[1-9]")) {
+				state = 6;
+				output += input;
+			}
+			break;
+		case 6:
+			if (regexMatch(input, "[0-9]")) {
+				output += input;
+			}
+			else if (regexMatch(input, "[,]")) {
+				state = 7;
+				verse = stoi(output);
+				output = "";
+				
+				handleFSMOutput(queryResults, std::make_tuple(book,chapter,verse), rangeStart);
+				verse = -1;
+			}
+			else if (regexMatch(input, "[;]")) {
+				state = 10;
+				verse = stoi(output);
+				output = "";
+
+				handleFSMOutput(queryResults, std::make_tuple(book,chapter,verse), rangeStart);
+				chapter = -1;
+				verse = -1;
+			}
+			else if (regexMatch(input, "[:]")) {
+				state = 11;
+				chapter = stoi(output);
+				output = "";
+			}
+			break;
+		case 7:
+			if (regexMatch(input, "[1-9]")) {
+				state = 4;
+				output += input;
+			}
+			break;
+		case 8:
+			if (regexMatch(input, "[1-9]")) {
+				state = 9;
+				output += input;
+			}
+			break;
+		case 9:
+			if (regexMatch(input, "[0-9]")) {
+				output += input;
+			}
+			else if (regexMatch(input, "[:]")) {
+				state = 3;
+				chapter = stoi(output);
+				output = "";
+			}
+			else if (regexMatch(input, "[;]")) {
+				state = 10;
+				chapter = stoi(output);
+				output = "";
+
+				handleFSMOutput(queryResults, std::make_tuple(book,chapter,verse), rangeStart);
+				chapter = -1;
+				verse = -1;
+			}
+			break;
+		case 10:
+			// temporarily disabled choosing another book
+			chapter = -1;
+			verse = -1;
+			rangeStart = -1;
+			state = 2;
+			goto chapter;
+			break;
+		case 11:
+			if (regexMatch(input, "[0-9]")) {
+				output += input;
+			}
+			if (regexMatch(input, "[,]")) {
+				state = 7;
+				verse = stoi(output);
+				output = "";
+
+				handleFSMOutput(queryResults, std::make_tuple(book,chapter,verse), rangeStart);
+				verse = -1;
+			}
+			else if (regexMatch(input, "[;]")) {
+				state = 10;
+				verse = stoi(output);
+				output = "";
+
+				handleFSMOutput(queryResults, std::make_tuple(book,chapter,verse), rangeStart);
+				chapter = -1;
+				verse = -1;
+			}
+			break;
 		}
-		int EndID = verseIDFromReference(std::make_tuple(std::get<0>(ref), chapter, verse));
-		for (int i = VerseID; i <= EndID; i++) {
-			queryResults.push(i);
+	}
+	switch (state) {
+	case 2:
+	case 9:
+		chapter = stoi(output);
+		handleFSMOutput(queryResults, std::make_tuple(book,chapter,verse), rangeStart);
+		break;
+	case 4:
+	case 11:
+		verse = stoi(output);
+		handleFSMOutput(queryResults, std::make_tuple(book,chapter,verse), rangeStart);
+		break;
+	case 6:
+		if (chapter == -1) {
+			chapter = stoi(output);
 		}
+		else {
+			verse = stoi(output);
+		}
+		handleFSMOutput(queryResults, std::make_tuple(book,chapter,verse), rangeStart);
+		break;
+	}
+	if (false) {
+		error:
+		std::cout << "Error in FSM execution" << std::endl;
+		return 1;
 	}
 	return 0;
 }
 // turns VerseID into reference and body in one tuple
 void BibleText::retrieveVerseFromID(int VerseID, std::tuple<std::string, int, int, std::string>& verse) {
-	std::tuple<std::string, int, int> reference;
+	std::tuple<int, int, int> reference;
 	fetchReferenceFromVerseID(VerseID, reference);
 
+	std::string bookName = names[std::get<0>(reference)-1];
+
 	std::string body = fetchBodyFromVerseID(VerseID);
-	verse = tuple_cat(reference, make_tuple(body));
+	//verse = tuple_cat(reference, make_tuple(body));
+	verse = std::make_tuple(bookName, std::get<1>(reference), std::get<2>(reference), body);
 }

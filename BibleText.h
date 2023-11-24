@@ -13,7 +13,7 @@ public:
 	BibleText(const char* directory);
 	~BibleText();
 	// into the queue provided puts the verses returned by the verse reference given
-	int query(std::queue<int>& queryResults, std::tuple<std::string, int, int> ref, std::string end);
+	int query(std::queue<int>& queryResults, std::string line);
 	// turns VerseID into reference and body in one tuple
 	void retrieveVerseFromID(int VerseID, std::tuple<std::string, int, int, std::string>& verse);
 private:
@@ -25,9 +25,7 @@ private:
 	const char* tail;
 	std::string sql;
 	int rc;
-	// debugging (should these be static?)
-	std::string getTime();
-	void logError(const std::string& message);
+
 	// database access
 	int oneIntInputOneIntOutput(const char* sql, int input);
 	int twoIntInputOneIntOutput(const char* sql, int input1, int input2);
@@ -46,8 +44,9 @@ private:
 	int verseOffsetFromChapterAndVerseID(int ChapterID, int VerseID);
 	int chapterEndVerseIDFromVerseID(int VerseID);
 	// main database functions
-	int verseIDFromReference(std::tuple<std::string, int, int> ref);
-	void fetchReferenceFromVerseID(int VerseID, std::tuple<std::string, int, int>& reference);
+	void handleFSMOutput(std::queue<int>& queryResults, std::tuple<int, int, int> reference, int &rangeStart);
+	int verseIDFromReference(std::tuple<int, int, int> ref);
+	void fetchReferenceFromVerseID(int VerseID, std::tuple<int, int, int>& reference);
 	std::string fetchBodyFromVerseID(int VerseID);
 
 };

@@ -112,6 +112,10 @@ int BibleSearch::verseIDsFromWordSearch(std::string search, std::queue<int>& que
 
 	// preparing statement with logged parameters
 	rc = sqlite3_prepare_v2(searchdb, searchQuery.c_str(), -1, &stmt, &tail);
+	if (rc) {
+		std::cout << "SQL error: " << searchQuery << std::endl;
+		return 1; 
+	}
 	int counter = 0;
 	while (!parameters.empty()) {
 		rc = sqlite3_bind_text(stmt, ++counter, parameters.front().c_str(), -1, SQLITE_STATIC);

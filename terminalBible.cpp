@@ -5,7 +5,6 @@ A program to access God's Word from the terminal
 #include "BibleText.h"
 #include "BibleSearch.h"
 
-#include <unordered_map>
 #include <cstring>
 #include <string>
 #include <sqlite3.h>
@@ -15,8 +14,6 @@ A program to access God's Word from the terminal
 #include <utility>
 #include <queue>
 #include <tuple>
-#include <chrono>
-#include <ctime>
 
 /* Abbreviation version
 void populateNameTable(std::string* ident, std::string filename) {
@@ -115,64 +112,6 @@ void printVerses(std::queue<int>& toPrint, BibleText& Bible, int queryMode) {
 		std::cout << std::get<0>(verse) << " " << std::get<1>(verse) << ":" << std::get<2>(verse) << " " << body << std::endl;
 	}
 }
-void searchAndOutputToConsole(const char* directory, std::string search) {
-	
-	BibleSearch WordSearch = BibleSearch(directory);
-
-	std::queue<int> searchResults;
-	WordSearch.verseIDsFromWordSearch(search, searchResults);
-
-	BibleText Bible = BibleText(directory);
-	printVerses(searchResults, Bible, 2);
-}
-// given an input string identifies it's book, chapter and verse
-// return a pair of VerseID ints? potential improvement
-void parseReferenceIntoTuple(std::string line, std::tuple<std::string, int, int>& reference) {
-	std::string cur;
-	std::string book = "";
-	int chapter = -1;
-	int verse = -1;
-	int state = 0;
-	for (size_t i = 0; i < line.length(); i++) {
-		char c = line[i];
-		if (c == ' ') { // ignore spaces
-			continue;
-		}
-		switch(state) {
-		case 0:
-			if (isdigit(c) && cur.length() > 0) { // book name (can start with a digit)
-				book = cur;
-				cur = "";
-				state++;
-
-				if (i == line.length() - 1) { // if end of string, finish here and leave verse as -1
-					chapter = c - '0'; // convert recent char to int
-				}
-			}
-			cur += c;
-			break;
-		case 1:
-			if (c != ':') {
-				cur += c; // chapter
-				if (i == line.length() - 1) { // if end of string, finish here and leave verse as -1
-					chapter = stoi(cur);
-				}
-			}
-			else {
-				chapter = stoi(cur);
-				cur = "";
-				state++;
-			}
-			break;
-		case 2:
-			cur += c; // verse (":" onwards)
-			if (i == line.length() - 1) {
-				verse = stoi(cur);
-			}
-		}
-	}
-	reference = std::make_tuple(book, chapter, verse);
-}
 int main(int argc, char **argv) { // notes: create a copy mode for referencing, and remember previous book/mode queried, x- until end of chapter
 	int queryMode = 0;
 	const char* directory;
@@ -186,9 +125,9 @@ int main(int argc, char **argv) { // notes: create a copy mode for referencing, 
 				std::cout << "No input, program ended" << std::endl;
 				break;
 			}
-			int skipFlag = 0;
+			bool skipFlag = false;
 			if (line[0] == '/') { // identify flag if present
-				skipFlag += 2;
+				skipFlag = true;
 				if (line[1] == 'r') {
 					queryMode = 0;
 				}
@@ -203,37 +142,15 @@ int main(int argc, char **argv) { // notes: create a copy mode for referencing, 
 					continue;
 				}
 			}
+			if (skipFlag) {
+				line = line.substr(2); // prune flag from line
+			}
 			if (queryMode == 0 || queryMode == 1) { // reading or memory
 
 				BibleText Bible = BibleText(directory);
 
-				std::string first = "";
-				std::string second = "";
-				std::tuple<std::string, int, int> ref; // parse the reference from the input line
-				int state = 0;
-				for (unsigned int i = 0; i < line.length(); i++) {
-					char c = line[i + skipFlag];
-					if (c == ' ') {
-						continue;
-					}
-					switch(state) {
-					case 0:
-						if (c == '-' && i != 1) { // Synodal has 1-E Иоанна e.g.
-							state++;
-							second += c;
-							break;
-						}
-						first += c;
-						break;
-					case 1:
-						second += c;
-						break;
-					}
-				}
-				parseReferenceIntoTuple(first, ref);
-
 				std::queue<int> results; // results of query stored here
-				if (Bible.query(results, ref, second) == 0) {
+				if (Bible.query(results, line) == 0) {
 					printVerses(results, Bible, queryMode);
 				}
 				else {
@@ -241,11 +158,18 @@ int main(int argc, char **argv) { // notes: create a copy mode for referencing, 
 				}
 			}
 			else if (queryMode == 2) { // search
-				std::string search;
-				for (size_t i = skipFlag; i < line.length();) { // skip first character, because I can't figure how to remember search flag in a user-friendly manner
-					search += readUtf8Character(line, i);
+				BibleSearch WordSearch = BibleSearch(directory);
+
+				std::queue<int> searchResults;
+				WordSearch.verseIDsFromWordSearch(line, searchResults);
+
+				BibleText Bible = BibleText(directory);
+				if (searchResults.size() != 0) {
+					printVerses(searchResults, Bible, queryMode);	
 				}
-				searchAndOutputToConsole(directory, search);
+				else {
+					std::cout << "No search results" << std::endl;
+				}
 			}
 		}
 	}
