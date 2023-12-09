@@ -336,9 +336,7 @@ void BibleText::handleFSMOutput(std::queue<int>& queryResults, std::tuple<int, i
 		}
 	}
 }
-// prints to the console verses according to the criteria given
-int BibleText::query(std::queue<int>& queryResults, std::string line) {
-
+int BibleText::FiniteStateMachine(std::queue<int>& queryResults, std::string line) {
 	int rangeStart;
 
 	std::string input;
@@ -353,7 +351,7 @@ int BibleText::query(std::queue<int>& queryResults, std::string line) {
 			continue;
 		}
 		//std::cout << "State: " << state << " Input: " << input << " Output: " << output << std::endl;
-		switch(state) { // FSM
+		switch(state) {
 		case 0: // Book (ignore first digit)
 			output += input;
 			state = 1;
@@ -460,7 +458,7 @@ int BibleText::query(std::queue<int>& queryResults, std::string line) {
 				state = 7;
 				verse = stoi(output);
 				output = "";
-				
+
 				handleFSMOutput(queryResults, std::make_tuple(book,chapter,verse), rangeStart);
 				verse = -1;
 			}
@@ -529,7 +527,7 @@ int BibleText::query(std::queue<int>& queryResults, std::string line) {
 					rangeStart = -1;
 				}
 			}
-			else if (regexMatch(input, "[:]") || regexMatch(input, "[-]")) {
+			else if (regexMatch(input, "[:]") || regexMatch(input, "[-]") /*|| regexMatch(input, "[;]") for some reason this prints every verse in the Bible*/) {
 				goto chapter; // epsilon transition
 			}
 			break;
@@ -593,6 +591,16 @@ int BibleText::query(std::queue<int>& queryResults, std::string line) {
 		return 1;
 	}
 	return 0;
+}
+// prints to the console verses according to the criteria given
+int BibleText::query(std::queue<int>& queryResults, std::string line) {
+	// perferms FSM off line into queryResults
+	if (FiniteStateMachine(queryResults, line) == 0) {
+		return 0;
+	}
+	else {
+		return 1;
+	}
 }
 // turns VerseID into reference and body in one tuple
 void BibleText::retrieveVerseFromID(int VerseID, std::tuple<std::string, int, int, std::string>& verse) {

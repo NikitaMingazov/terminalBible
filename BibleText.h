@@ -45,6 +45,7 @@ private:
 	int chapterEndVerseIDFromVerseID(int VerseID);
 	// main database functions
 	void handleFSMOutput(std::queue<int>& queryResults, std::tuple<int, int, int> reference, int &rangeStart);
+	int FiniteStateMachine(std::queue<int>& queryResults, std::string line);
 	int verseIDFromReference(std::tuple<int, int, int> ref);
 	void fetchReferenceFromVerseID(int VerseID, std::tuple<int, int, int>& reference);
 	std::string fetchBodyFromVerseID(int VerseID);

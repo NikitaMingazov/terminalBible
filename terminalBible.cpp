@@ -7,9 +7,7 @@ A program to access God's Word from the terminal
 
 #include <cstring>
 #include <string>
-#include <sqlite3.h>
 #include <iostream>
-#include <fstream>
 #include <list>
 #include <utility>
 #include <queue>
