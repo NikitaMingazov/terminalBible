@@ -78,7 +78,7 @@ std::string BibleSearch::parseSearchIntoSqlStatement(std::string search, std::qu
 	}
 	// parsing the list of inputs into SQL, and keeping a log of parameters to later insert
 	// COLLATE NOCASE is Sqlite3 specific to make search case insensitive for ASCII. For non-ASCII I'm not looking forward to, if this is even good to do
-	std::string WordSelection = "VerseID IN (SELECT VerseID FROM WordVerse WHERE WordID = (SELECT WordID FROM Words WHERE Word COLLATE NOCASE = ?))";
+	std::string WordSelection = "VerseID IN (SELECT VerseID FROM WordVerse WHERE WordID IN (SELECT WordID FROM Words WHERE Word COLLATE NOCASE = ?))";
 	// I need DISTINCT here because my SQL code is cobbled together and really bad, creates tons of duplicates
 	std::string searchQuery = "SELECT DISTINCT VerseID FROM WordVerse WHERE ";
 	while (!unparsed.empty()) {
