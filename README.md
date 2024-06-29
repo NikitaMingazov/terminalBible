@@ -1,4 +1,5 @@
 # terminalBible
+## note: I am no longer a Christian so this will not be developed further. Furthermore there is a bug where chapter selection (Genesis 1:1- etc.) will stop one verse short making this program not fit for purpose
 search the Scriptures from a terminal
 
 # Usage directions:
