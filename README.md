@@ -6,9 +6,9 @@ search the Scriptures from a terminal
 ## To use terminalBible:
   To start run "./terminalBible {directory}" (directory containing resources, provided is "KJV") <br>
   Then (flag) Bookname Chapter(:verse{-{chapter:}verse}) <br>
-  Flag can be "/r" (default) to output full verses <br>
-  or "/m" to output only first letter of each verse (for memorisation) <br>
-  or "/s" to perform a word search (will be REGEX later) <br>
+  Flag can be "r" (default) to output full verses <br>
+  or "m" to output only first letter of each verse (for memorisation) <br>
+  or "s" to perform a word search. /AND or /OR seperate words from operators, brackets also apply <br>
   later will add "/c" for properly formatted to copy-paste <br>
   Flag is optional, the program remembers the previously used one, and it defaults on "/r" <br>
 
