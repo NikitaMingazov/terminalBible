@@ -1,17 +1,18 @@
 # terminalBible
+### note: I am no longer a Christian so this consider this build final.
 search the Scriptures from a terminal
 
 # Usage directions:
 ## To use terminalBible:
   To start run "./terminalBible {directory}" (directory containing resources, provided is "KJV") <br>
   Then (flag) Bookname Chapter(:verse{-{chapter:}verse}) <br>
-  Flag can be "/r" (default) to output full verses <br>
-  or "/m" to output only first letter of each verse (for memorisation) <br>
-  or "/s" to perform a word search (will be REGEX later) <br>
+  Flag can be "r" (default) to output full verses <br>
+  or "m" to output only first letter of each verse (for memorisation) <br>
+  or "s" to perform a word search. /AND or /OR seperate words from operators, brackets also apply <br>
   later will add "/c" for properly formatted to copy-paste <br>
   Flag is optional, the program remembers the previously used one, and it defaults on "/r" <br>
 
-  John 3:36 returns 
+  John 3:36 returns
   <blockquote>John 3:36 He that believeth on the Son hath everlasting life: and he that believeth not the Son shall not see life; but the wrath of God abideth on him.</blockquote>
   Bookname can be anything as long as it starts with one of the key values in the Bible.table file (which is just plain text) <br>
   Chapter is an integer <br>

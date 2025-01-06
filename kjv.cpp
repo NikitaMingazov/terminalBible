@@ -1,6 +1,8 @@
 /*
 Generate Bible references from a script
 */
+#include <unistd.h>
+
 #include "BibleText.h"
 #include "BibleSearch.h"
 
@@ -51,9 +53,9 @@ void printVerses(std::queue<int>& toPrint, BibleText& Bible, int queryMode) {
 }
 int main(int argc, char **argv) { // notes: create a copy mode for referencing, and remember previous book/mode queried, x- until end of chapter
 	int queryMode = 0;
-	const char* directory = "KJV";
-	if (argc >= 2 && std::strlen(argv[1]) > 1 ) {
-		std::string line = std::string(argv[1]);
+	const char* directory = argv[1];
+	if (argc >= 3 && std::strlen(argv[2]) > 1 ) { // no flag, so reading mode
+		std::string line = std::string(argv[2]);
 
 		BibleText Bible = BibleText(directory);
 
@@ -70,10 +72,10 @@ int main(int argc, char **argv) { // notes: create a copy mode for referencing, 
 			std::cout << "An error occured" << std::endl;
 		}
 	}
-	if (argc > 2) {
+	if (argc > 3) {
 		int mode = 0;
-		char flag = argv[1][0];
-		std::string line = std::string(argv[2]);
+		char flag = argv[2][0];
+		std::string line = std::string(argv[3]);
 		if (flag == 's') {
 			mode = 2;
 		}

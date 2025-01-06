@@ -43,6 +43,7 @@ private:
 	int chapterOffsetFromBookAndChapterID(int BookID, int ChapterID);
 	int verseOffsetFromChapterAndVerseID(int ChapterID, int VerseID);
 	int chapterEndVerseIDFromVerseID(int VerseID);
+	int bookEndVerseIDFromBookID(int BookID);
 	// main database functions
 	void handleFSMOutput(std::queue<int>& queryResults, std::tuple<int, int, int> reference, int &rangeStart);
 	int FiniteStateMachine(std::queue<int>& queryResults, std::string line);

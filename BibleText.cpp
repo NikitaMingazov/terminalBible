@@ -183,8 +183,13 @@ int BibleText::verseOffsetFromChapterAndVerseID(int ChapterID, int VerseID) {
 }
 int BibleText::chapterEndVerseIDFromVerseID(int VerseID) {
 	sql = "SELECT VerseID FROM Verses WHERE ChapterID = (SELECT ChapterID FROM Verses WHERE VerseID = ?) ORDER BY VerseID DESC LIMIT 1";
-
 	return oneIntInputOneIntOutput(sql.c_str(), VerseID);
+}
+int BibleText::bookEndVerseIDFromBookID(int BookID) {
+	sql = "SELECT ChapterID FROM Chapters WHERE BookID = ? ORDER BY ChapterID DESC LIMIT 1";
+	int chapter = oneIntInputOneIntOutput(sql.c_str(), BookID);
+	int verse = verseIDFromChapterIDandOffset(chapter, 0);
+	return chapterEndVerseIDFromVerseID(verse);
 }
 int BibleText::verseIDFromReference(std::tuple<int, int, int> ref) {
 	// identify requested book
@@ -218,7 +223,7 @@ void BibleText::fetchReferenceFromVerseID(int VerseID, std::tuple<int, int, int>
 }
 // populates the given Book->ID map according to the given filename
 void BibleText::populateMap(std::string filename) {
-	std::ifstream inputFile(filename); // "kjv.txt" for KJV, etc.
+	std::ifstream inputFile(filename); // "kjv.txt" for KJV, etc. (now it is "Bible.table" irrespective)
 	if (inputFile.is_open()) {
 		std::string line;
 		std::string index;
@@ -268,8 +273,8 @@ void BibleText::populateNameTable(std::string filename) {
 		while (getline(inputFile, line) && i < 66) {
 			std::string cur;
 			bool begun = false;
-			for (unsigned int i = 0; i < line.length(); i++) {
-				char c = line[i];
+			for (unsigned int j = 0; j < line.length(); j++) {
+				char c = line[j];
 				if (c == '#') { // comment found, skip line
 					cur = "";
 					break;
@@ -316,22 +321,34 @@ BibleText::~BibleText() {
 bool regexMatch(std::string input, std::string pattern) {
 	return std::regex_match(input, std::regex(pattern));
 }
+// this was formerly being copy-pasted everywhere
 void BibleText::handleFSMOutput(std::queue<int>& queryResults, std::tuple<int, int, int> ref, int &rangeStart) {
+	// entirety of a book (no chapter field)
+	if (std::get<1>(ref) == -1) {
+		int startOfBook = verseIDFromReference(std::make_tuple(std::get<0>(ref),1,1));
+		int endOfBook = bookEndVerseIDFromBookID(std::get<0>(ref));
+		for (int i = startOfBook; i <= endOfBook; i++) {
+			queryResults.push(i);
+		}
+		return;
+	}
 	int VerseID = verseIDFromReference(ref);
 	if (VerseID == -1) {
 		std::cout << "No match found for " << names[std::get<0>(ref)-1] << " " << std::get<1>(ref) << ":" << std::get<2>(ref) << std::endl;
 		return;
 	}
+	// a defined range of verses before the reference
 	if (rangeStart != -1) {
 		for (int i = rangeStart; i < VerseID; i++) { // do while?
 			queryResults.push(i);
 		}
 		rangeStart = -1;
 	}
+	// the referenced verse
 	queryResults.push(VerseID);
-	if (std::get<2>(ref) == -1) { // whole chapter
+	if (std::get<2>(ref) == -1) { // the chapter after the verse
 		int EndID = chapterEndVerseIDFromVerseID(VerseID);
-		for (int i = VerseID + 1; i < EndID; i++) {
+		for (int i = VerseID + 1; i <= EndID; i++) {
 			queryResults.push(i);
 		}
 	}
@@ -350,9 +367,9 @@ int BibleText::FiniteStateMachine(std::queue<int>& queryResults, std::string lin
 		if (input == " ") {
 			continue;
 		}
-		//std::cout << "State: " << state << " Input: " << input << " Output: " << output << std::endl;
+		// std::cout << "State: " << state << " Input: " << input << " Output: " << output << std::endl;
 		switch(state) {
-		case 0: // Book (ignore first digit)
+		case 0: // Book (treat first digit as a character)
 			output += input;
 			state = 1;
 			break;
@@ -560,9 +577,8 @@ int BibleText::FiniteStateMachine(std::queue<int>& queryResults, std::string lin
 	}
 	// cleaning up outputs on the accepting states
 	switch (state) {
-	case 1:
+	case 1: // entirety of a book
 		book = getBookID(output);
-		chapter = 1;
 		handleFSMOutput(queryResults, std::make_tuple(book,chapter,verse), rangeStart);
 		break;
 	case 2:
@@ -575,6 +591,14 @@ int BibleText::FiniteStateMachine(std::queue<int>& queryResults, std::string lin
 		verse = stoi(output);
 		handleFSMOutput(queryResults, std::make_tuple(book,chapter,verse), rangeStart);
 		break;
+	case 5: {// book chapter:verse-
+		// a hacky solution for a mostly unimportant but still valid function
+		std::tuple<int, int, int> rangeEnd;
+		fetchReferenceFromVerseID(chapterEndVerseIDFromVerseID(rangeStart), rangeEnd);
+		rangeStart = verseIDFromReference(std::make_tuple(book,chapter,verse));
+		handleFSMOutput(queryResults, rangeEnd, rangeStart);
+		break;
+	}
 	case 6:
 		if (chapter == -1) {
 			chapter = stoi(output);
@@ -592,7 +616,7 @@ int BibleText::FiniteStateMachine(std::queue<int>& queryResults, std::string lin
 	}
 	return 0;
 }
-// prints to the console verses according to the criteria given
+// returns verseIDs according to the criteria given
 int BibleText::query(std::queue<int>& queryResults, std::string line) {
 	// perferms FSM off line into queryResults
 	if (FiniteStateMachine(queryResults, line) == 0) {
