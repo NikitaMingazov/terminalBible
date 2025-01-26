@@ -153,7 +153,7 @@ int BibleText::verseIDFromChapterIDandOffset (int ChapterID, int offset) {
 }
 std::string BibleText::fetchBodyFromVerseID(int VerseID) {
 	sql = "SELECT body FROM Verses WHERE VerseID = ?";
-	
+
 	return oneIntInputOneStringOutput(sql.c_str(), VerseID);
 }
 int BibleText::chapterIDFromVerseID(int VerseID) {
@@ -211,13 +211,29 @@ int BibleText::verseIDFromReference(std::tuple<int, int, int> ref) {
 // turns a VerseID into the reference that would return it
 void BibleText::fetchReferenceFromVerseID(int VerseID, std::tuple<int, int, int>& reference) {
 
+	auto start = std::chrono::high_resolution_clock::now();
 	int ChapterID = chapterIDFromVerseID(VerseID);
+	auto end = std::chrono::high_resolution_clock::now();
+	auto dur = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
+	std::cout << "chapterID from verseID: " << dur.count() << " ns" << std::endl;
 
+	start = std::chrono::high_resolution_clock::now();
 	int BookID = bookIDFromChapterID(ChapterID);
+	end = std::chrono::high_resolution_clock::now();
+	dur = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
+	std::cout << "bookID from chapterID: " << dur.count() << " ns" << std::endl;
 
+	start = std::chrono::high_resolution_clock::now();
 	int chapterOffset = chapterOffsetFromBookAndChapterID(BookID, ChapterID);
+	end = std::chrono::high_resolution_clock::now();
+	dur = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
+	std::cout << "chapterOffset: " << dur.count() << " ns" << std::endl;
 
+	start = std::chrono::high_resolution_clock::now();
 	int verseOffset = verseOffsetFromChapterAndVerseID(ChapterID, VerseID);
+	end = std::chrono::high_resolution_clock::now();
+	dur = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
+	std::cout << "verseOffset: " << dur.count() << " ns" << std::endl;
 
 	reference = std::make_tuple(BookID, chapterOffset, verseOffset);
 }
@@ -339,7 +355,7 @@ void BibleText::handleFSMOutput(std::queue<int>& queryResults, std::tuple<int, i
 	}
 	// a defined range of verses before the reference
 	if (rangeStart != -1) {
-		for (int i = rangeStart; i < VerseID; i++) { // do while?
+		for (int i = rangeStart; i < VerseID; i++) {
 			queryResults.push(i);
 		}
 		rangeStart = -1;
@@ -354,7 +370,7 @@ void BibleText::handleFSMOutput(std::queue<int>& queryResults, std::tuple<int, i
 	}
 }
 int BibleText::FiniteStateMachine(std::queue<int>& queryResults, std::string line) {
-	int rangeStart;
+	int rangeStart = -1;
 
 	std::string input;
 	std::string output;
@@ -629,11 +645,19 @@ int BibleText::query(std::queue<int>& queryResults, std::string line) {
 // turns VerseID into reference and body in one tuple
 void BibleText::retrieveVerseFromID(int VerseID, std::tuple<std::string, int, int, std::string>& verse) {
 	std::tuple<int, int, int> reference;
+	auto start = std::chrono::high_resolution_clock::now();
 	fetchReferenceFromVerseID(VerseID, reference);
+	auto end = std::chrono::high_resolution_clock::now();
+	auto dur = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
+	std::cout << "reference from verseID: " << dur.count() << " ns" << std::endl;
 
 	std::string bookName = names[std::get<0>(reference)-1];
 
+	start = std::chrono::high_resolution_clock::now();
 	std::string body = fetchBodyFromVerseID(VerseID);
+	end = std::chrono::high_resolution_clock::now();
+	dur = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
+	std::cout << "body from verseID: " << dur.count() << " ns" << std::endl;
 	//verse = tuple_cat(reference, make_tuple(body));
 	verse = std::make_tuple(bookName, std::get<1>(reference), std::get<2>(reference), body);
 }

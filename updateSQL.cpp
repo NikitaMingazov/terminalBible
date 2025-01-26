@@ -199,7 +199,8 @@ int abbreviate(string books[], string abbreviations[]) {
 	unordered_map<string, list<string>*> map; // used to map buckets to their substring
 
 	for (int i = 0; i < 66; i++) { // setting up initial buckets
-		string firstLetter = readUtf8Character(books[i], (size_t)0);
+		size_t zero = 0;
+		string firstLetter = readUtf8Character(books[i], zero);
 		if (map.count(firstLetter) == 0) {
 			list<string> bucket;
 			bucket.push_back(firstLetter);
@@ -222,7 +223,7 @@ int abbreviate(string books[], string abbreviations[]) {
 		else { // more splits required
 			string base = *it; // current substring and it's length
 			int n = base.length();
-			
+
 			string temp;
 			for (int i = 1; i < bucket.size(); i++) { // start from position 1
 				it++; // next()
@@ -286,36 +287,38 @@ int updateText(const char* source, const char* constDirectory) {
 	}
 
 	string directory = string(constDirectory) + "/"; // to clean up filename code
-	
+
 	int rc = sqlite3_open((directory+"Bible.db").c_str(), &db); // Open or create a SQLite database file named "Bible.db"
-	
+
 	// Create the Chapters table
 	sql = "DROP TABLE IF EXISTS Chapters";
 	rc = sqlite3_exec(db, sql, 0, 0, 0);
 	sql = "CREATE TABLE Chapters (BookID INT, ChapterID INT, PRIMARY KEY (ChapterID))";
 	rc = sqlite3_exec(db, sql, 0, 0, 0);
-	sql = "CREATE INDEX IF NOT EXISTS Chapter_Index ON Chapters (ChapterID)"; // creating indexes for efficiency
+	sql = "CREATE INDEX IF NOT EXISTS C_Chapter_Index ON Chapters (ChapterID)"; // creating indexes for efficiency
 	rc = sqlite3_exec(db, sql, 0, 0, 0);
-	sql = "CREATE INDEX IF NOT EXISTS Book_Index ON Chapters (BookID)";
+	sql = "CREATE INDEX IF NOT EXISTS C_Book_Index ON Chapters (BookID)";
 	rc = sqlite3_exec(db, sql, 0, 0, 0);
 	// Create the Verses table
 	sql = "DROP TABLE IF EXISTS Verses";
 	rc = sqlite3_exec(db, sql, 0, 0, 0);
 	sql = "CREATE TABLE Verses (VerseID INT, ChapterID INT, Body TEXT, PRIMARY KEY (VerseID), FOREIGN KEY (ChapterID) REFERENCES Chapters(ChapterID))";
 	rc = sqlite3_exec(db, sql, 0, 0, 0);
-	sql = "CREATE INDEX Verse_Index ON Verses (VerseID)";
+	sql = "CREATE INDEX V_Verse_Index ON Verses (VerseID)";
 	rc = sqlite3_exec(db, sql, 0, 0, 0);
-	
+	sql = "CREATE INDEX V_Chapter_Index ON Verses (ChapterID)";
+	rc = sqlite3_exec(db, sql, 0, 0, 0);
+
 	ifstream inputFile(source); // "kjv.txt" for KJV, etc.
 	if (inputFile.is_open()) {
 		string line;
-   
+
 		int bookID = 0;
 		int chapterID = 0;
 		int verseID = 0;
 
 		string prevBook = "";
-		int prevChapter = -1; 
+		int prevChapter = -1;
 		string books[66];
 
 		while (getline(inputFile, line)) {
@@ -357,10 +360,10 @@ int updateText(const char* source, const char* constDirectory) {
 							prevChapter = stoi(chapter);
 							// new chapter
 							chapterID++;
-							
+
 							sql = "INSERT INTO Chapters (BookID, ChapterID) VALUES (?, ?)";
 							rc = sqlite3_prepare_v2(db, sql, -1, &stmt, 0);
-						
+
 							sqlite3_bind_int(stmt, 1, bookID);
 							sqlite3_bind_int(stmt, 2, chapterID);
 							rc = sqlite3_step(stmt);
@@ -372,7 +375,7 @@ int updateText(const char* source, const char* constDirectory) {
 						// checking if an undesired unicode (e.g. ¶) has appeared
 						if (isUndesiredCharacter(c)) {
 							continue;
-						}						
+						}
 						if (c != " " && !isdigit(c[0])) { // verse start found
 							body += c;
 							state++;
@@ -387,7 +390,7 @@ int updateText(const char* source, const char* constDirectory) {
 				}
 			}
 			verseID++;
-			
+
 			sql = "INSERT INTO Verses (VerseID, ChapterID, Body) VALUES (?, ?, ?)";
 			rc = sqlite3_prepare_v2(db, sql, -1, &stmt, 0);
 			if (rc != SQLITE_OK) {
@@ -405,9 +408,9 @@ int updateText(const char* source, const char* constDirectory) {
 		// generating optimal unique substring matches for books
 		string abbreviations[66];
 		abbreviate(books, abbreviations);
-		
+
 		writeTable((directory+"Bible.table").c_str(), abbreviations, books);
-		
+
 	} else {
 		cerr << "Failed to open the file." << endl;
 		sqlite3_close(db);
@@ -420,7 +423,7 @@ int updateText(const char* source, const char* constDirectory) {
 
 int main(int argc, char **argv) { // add filename inputs
 	if (argc < 2) {
-		cout << "Function missing, refer to \"README.md\"" << endl;
+		cout << "missing function, \"t\" for text, \"s\" for search, \"ts\" for both" << endl;
 	}
 	else {
 		if (string(argv[1]) == "t") { // update Bible text
@@ -474,7 +477,7 @@ int main(int argc, char **argv) { // add filename inputs
 			}
 		}
 		else {
-			cout << "Unknown function called, refer to \"README.md\"." << endl;
+			cout << "missing function, \"t\" for text, \"s\" for search, \"ts\" for both" << endl;
 		}
 	}
 	return 0;

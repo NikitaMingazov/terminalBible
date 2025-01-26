@@ -4,7 +4,7 @@ LDFLAGS = -lsqlite3
 
 SOURCES = BibleText.cpp kjv.cpp BibleSearch.cpp
 OBJECTS = $(SOURCES:.cpp=.o)
-EXECUTABLE = kjv.exe
+EXECUTABLE = kjv
 
 all: $(EXECUTABLE)
 

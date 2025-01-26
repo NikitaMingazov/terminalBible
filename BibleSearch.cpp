@@ -106,7 +106,7 @@ std::string BibleSearch::parseSearchIntoSqlStatement(std::string search, std::qu
 }
 // provided a word search, returns the list of matching IDs
 int BibleSearch::verseIDsFromWordSearch(std::string search, std::queue<int>& queryResults) {
-	
+
 	std::queue<std::string> parameters;
 	std::string searchQuery = parseSearchIntoSqlStatement(search, parameters);
 
@@ -114,7 +114,7 @@ int BibleSearch::verseIDsFromWordSearch(std::string search, std::queue<int>& que
 	rc = sqlite3_prepare_v2(searchdb, searchQuery.c_str(), -1, &stmt, &tail);
 	if (rc) {
 		std::cout << "SQL error: " << searchQuery << std::endl;
-		return 1; 
+		return 1;
 	}
 	int counter = 0;
 	while (!parameters.empty()) {
