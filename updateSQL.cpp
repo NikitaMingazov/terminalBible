@@ -14,7 +14,7 @@ It takes a .txt and creates a "filename".db, a "filename".table(just plaintext) 
 #include <filesystem>
 
 /*
-g++ -o updateSQL.exe updateSQL.cpp -lsqlite3
+g++ -o updateSQL updateSQL.cpp -lsqlite3
 */
 using namespace std;
 namespace fs = std::filesystem;  // Define an alias for the namespace
