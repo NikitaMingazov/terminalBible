@@ -1,9 +1,16 @@
 # terminalBible
-### note: I am no longer a Christian so this consider this build final.
-search the Scriptures from a terminal
+search the Scriptures from a terminal (I'm no longer a christian so development is scarce)
 
 # Usage directions:
-## To use terminalBible:
+there is an interactive program I wrote earlier (terminalBible hence the name, though it would be better as a CLI)
+but much more practical is using the later 'kjv' executable (which the makefile now builds instead of terminalBible) as part of a bash script like so
+#!/bin/bash
+directory="/home/username/where/this/was/set/up"
+additional_args=("$@")
+"$directory/kjv" "$directory/KJV" "${additional_args[@]}"
+and so "kjv s potter" will work properly
+
+## for terminalBible:
   To start run "./terminalBible {directory}" (directory containing resources, provided is "KJV") <br>
   Then (flag) Bookname Chapter(:verse{-{chapter:}verse}) <br>
   Flag can be "r" (default) to output full verses <br>
