@@ -1,10 +1,10 @@
 /*
 Generate Bible references from a script
 */
-#include <unistd.h>
-
 #include "BibleText.h"
 #include "BibleSearch.h"
+
+#include <unistd.h>
 
 #include <cstring>
 #include <string>
@@ -40,7 +40,6 @@ std::string firstLetterOfEachWord(const std::string& line) {
 void printVerses(std::queue<int>& toPrint, BibleText& Bible, int queryMode) {
 	std::tuple<std::string, int, int, std::string> verse;
 
-	//std::ostringstream buffer;
 	while (!toPrint.empty()) {
 		int VerseID = toPrint.front();
 		toPrint.pop();
@@ -48,12 +47,11 @@ void printVerses(std::queue<int>& toPrint, BibleText& Bible, int queryMode) {
 		std::tuple<std::string, int, int, std::string> verse;
 		Bible.retrieveVerseFromID(VerseID, verse);
 		std::string body = std::get<3>(verse);
-		/*if (queryMode == 1) { // memorisation
+		/*if (queryMode == 2) { // memorisation (depreciated)
 			body = firstLetterOfEachWord(body);
 		}*/
 		std::cout << std::get<0>(verse) << " " << std::get<1>(verse) << ":" << std::get<2>(verse) << " " << body << std::endl;
 	}
-	//std::cout << buffer.str();
 }
 int main(int argc, char **argv) { // notes: create a copy mode for referencing, and remember previous book/mode queried, x- until end of chapter
 	int queryMode = 0;
@@ -65,6 +63,7 @@ int main(int argc, char **argv) { // notes: create a copy mode for referencing, 
 			line[0] = std::toupper(line[0]);
 		}
 		else if (!std::isupper(line[0])) {
+			// first character was a number
 			line[1] = std::toupper(line[1]);
 		}
 		BibleText Bible = BibleText(directory);
@@ -87,15 +86,15 @@ int main(int argc, char **argv) { // notes: create a copy mode for referencing, 
 		char flag = argv[2][0];
 		std::string line = std::string(argv[3]);
 		if (flag == 's') {
-			mode = 2;
+			mode = 1;
 		}
 		else if (flag == 'm') {
-			mode = 1;
+			mode = 2;
 		}
 		else if (flag == 'c') {
 			mode = 3;
 		}
-		if (mode == 0 || mode == 1) {
+		if (mode == 0 || mode == 2) {
 
 			BibleText Bible = BibleText(directory);
 
@@ -112,7 +111,7 @@ int main(int argc, char **argv) { // notes: create a copy mode for referencing, 
 				std::cout << "An error occured" << std::endl;
 			}
 		}
-		else if (mode == 2) { // search
+		else if (mode == 1) { // search
 			BibleSearch WordSearch = BibleSearch(directory);
 
 			std::queue<int> searchResults;

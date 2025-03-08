@@ -6,23 +6,18 @@
 #include <chrono>     // for std::chrono::system_clock
 #include <ctime>      // for std::time_t, std::tm
 #include <cctype>     // for std::isalpha
-#include <list>       // for std::list
 #include <regex>
 #include <tuple>
 
 inline std::string getTime() {
 	auto currentTimePoint = std::chrono::system_clock::now();
-
     // Convert the time point to a time_t (Unix timestamp)
     std::time_t currentTime = std::chrono::system_clock::to_time_t(currentTimePoint);
-
     // Convert the time_t to a struct tm (time structure)
     std::tm* timeInfo = std::localtime(&currentTime);
-
     // Format the time structure into a human-readable string
     char buffer[80];
     std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", timeInfo);
-
     // Print the human-readable timestamp
     return buffer;
 }
@@ -64,7 +59,7 @@ int BibleText::oneIntInputOneIntOutput(const char* sql, int input) {
 
 	rc = sqlite3_prepare_v2(textdb, sql, -1, &stmt, &tail);
 	if (rc != SQLITE_OK) { // debugging
-		logError("SQL err: " + std::string(sql) + " Par: " + std::to_string(input));
+		logError("SQL prep err: " + std::string(sql) + " Par: " + std::to_string(input));
 		return output;
 	}
 	sqlite3_bind_int(stmt, 1, input);
@@ -84,7 +79,7 @@ int BibleText::twoIntInputOneIntOutput(const char* sql, int input1, int input2) 
 
 	rc = sqlite3_prepare_v2(textdb, sql, -1, &stmt, &tail);
 	if (rc != SQLITE_OK) { // debugging
-		logError("SQL err: " + std::string(sql) + " Par1: " + std::to_string(input1) + " Par2: " + std::to_string(input2));
+		logError("SQL prep err: " + std::string(sql) + " Par1: " + std::to_string(input1) + " Par2: " + std::to_string(input2));
 		return output;
 	}
 	sqlite3_bind_int(stmt, 1, input1);
