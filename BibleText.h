@@ -17,6 +17,7 @@ public:
 	// turns VerseID into reference and body in one tuple
 	void retrieveVerseFromID(int VerseID, std::tuple<std::string, int, int, std::string>& verse);
 private:
+	std::string directory; // where the files are stored, for logging purposes
 	sqlite3* textdb;
 	std::unordered_map<std::string, int> mappings;
 	std::string* names;
@@ -26,6 +27,7 @@ private:
 	std::string sql;
 	int rc;
 
+	void logError(const std::string& message);
 	// database access
 	int oneIntInputOneIntOutput(const char* sql, int input);
 	int twoIntInputOneIntOutput(const char* sql, int input1, int input2);
@@ -54,3 +56,4 @@ private:
 };
 
 #endif
+

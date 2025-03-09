@@ -21,11 +21,6 @@ inline std::string getTime() {
     // Print the human-readable timestamp
     return buffer;
 }
-inline void logError(const std::string& message) {
-	std::ofstream logfile("error.log", std::ios_base::app);
-	logfile << message << " (" << getTime() << ")" << std::endl;
-	logfile.close();
-}
 inline size_t getCodePointSize(const std::string& utf8String, size_t index) {
 	unsigned char firstByte = static_cast<unsigned char>(utf8String[index]);
 
@@ -53,6 +48,12 @@ inline std::string readUtf8Character(const std::string& utf8String, size_t& inde
 	}
 	return character;
 }
+void BibleText::logError(const std::string& message) {
+	std::ofstream logfile(directory + "error.log", std::ios_base::app);
+	logfile << message << " (" << getTime() << ")" << std::endl;
+	logfile.close();
+}
+
 // provided one int input parameter with int output expected, runs provided sql query on provided database
 int BibleText::oneIntInputOneIntOutput(const char* sql, int input) {
 	int output = -1;
@@ -297,7 +298,7 @@ void BibleText::populateNameTable(std::string filename) {
 }
 
 BibleText::BibleText(const char* inputDir) {
-	std::string directory = std::string(inputDir)+"/";
+	directory = std::string(inputDir)+"/";
 
 	rc = sqlite3_open_v2((directory+"Bible.db").c_str(), &textdb, SQLITE_OPEN_READONLY, nullptr);
 	if (rc) {
