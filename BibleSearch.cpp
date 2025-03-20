@@ -56,18 +56,18 @@ std::string BibleSearch::parseSearchIntoSqlStatement(std::string search, std::qu
 			unparsed.push(c);
 			continue;
 		}
-		if (c == "/" || c == " ") { // new word
+		if (c == "/" || c == " " || c == "&" || c == "|") { // new word
 			if (substring.length() > 0) {
 				unparsed.push(substring);
 			}
 			substring = "";
 		}
 		substring += c;
-		if (substring == "/OR") {
+		if (substring == "/OR" || substring == "|") {
 			unparsed.push("/OR");
 			substring = "";
 		}
-		else if (substring == "/AND" || substring == " ") {
+		else if (substring == "/AND" || substring == " " || substring == "&") {
 			unparsed.push("/AND");
 			substring = "";
 		}
