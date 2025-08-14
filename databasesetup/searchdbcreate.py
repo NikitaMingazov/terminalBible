@@ -33,7 +33,7 @@ def handleWord(word):
 
 insertion = False;
 try:
-    with open("kjvformatted.txt", 'r', encoding='utf-8') as input_file:
+    with open("synodalformatted.txt", 'r', encoding='utf-8') as input_file:
         for line in input_file:
             temp = line.strip()
             if insertion == False:

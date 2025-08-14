@@ -57,8 +57,7 @@ def read_and_write_text(input_file_path, output_file_path):
         print(f"An error occurred: {e}")
 
 # Example usage
-input_file_path = 'kjv.txt'
-output_file_path = 'kjvformatted.txt'
+input_file_path = '/home/cyril/Downloads/synodal.txt'
+output_file_path = 'synodalformatted.txt'
 
 read_and_write_text(input_file_path, output_file_path)
-

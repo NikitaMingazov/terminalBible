@@ -4,14 +4,26 @@ It takes a .txt and creates a "filename".db, a "filename".table(just plaintext) 
 */
 #include <iostream>
 #include <fstream>
+#include <string>
 #include <cmath>
-#include <sqlite3.h>
 #include <cstring>
 #include <unordered_map>
 #include <list>
 #include <stack>
 #include <utility>
 #include <filesystem>
+#include <sqlite3.h>
+
+/* #include <iostream> */
+/* #include <fstream> */
+/* #include <cmath> */
+/* #include <sqlite3.h> */
+/* #include <cstring> */
+/* #include <unordered_map> */
+/* #include <list> */
+/* #include <stack> */
+/* #include <utility> */
+/* #include <filesystem> */
 
 /*
 g++ -o updateSQL updateSQL.cpp -lsqlite3

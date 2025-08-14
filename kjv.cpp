@@ -44,8 +44,7 @@ void printVerses(std::queue<int>& toPrint, BibleText& Bible, int queryMode) {
 		int VerseID = toPrint.front();
 		toPrint.pop();
 
-		std::tuple<std::string, int, int, std::string> verse;
-		Bible.retrieveVerseFromID(VerseID, verse);
+		std::tuple<std::string, int, int, std::string> verse = Bible.retrieveVerseFromID(VerseID);
 		std::string body = std::get<3>(verse);
 		/*if (queryMode == 2) { // memorisation (depreciated)
 			body = firstLetterOfEachWord(body);
@@ -53,28 +52,36 @@ void printVerses(std::queue<int>& toPrint, BibleText& Bible, int queryMode) {
 		std::cout << std::get<0>(verse) << " " << std::get<1>(verse) << ":" << std::get<2>(verse) << " " << body << std::endl;
 	}
 }
+
+void capitalise_book(std::string& line) {
+	// capitalising book title to enable one-handed use
+	if (std::islower(line[0])) {
+		line[0] = std::toupper(line[0]);
+	}
+	else if (!std::isupper(line[0])) {
+		// first character was a number
+		line[1] = std::toupper(line[1]);
+	}
+}
+
 int main(int argc, char **argv) { // notes: create a copy mode for referencing, and remember previous book/mode queried, x- until end of chapter
+	if (argc == 1 || argc == 2) {
+		std::cout << "usage: kjv /path/to/database_dir <flag> 'query'" << std::endl;
+	}
 	int queryMode = 0;
 	const char* directory = argv[1];
 	if (argc >= 3 && std::strlen(argv[2]) > 1 ) { // no flag, so reading mode
 		std::string line = std::string(argv[2]);
-		// capitalising book title to enable one-handed use
-		if (std::islower(line[0])) {
-			line[0] = std::toupper(line[0]);
-		}
-		else if (!std::isupper(line[0])) {
-			// first character was a number
-			line[1] = std::toupper(line[1]);
-		}
+		capitalise_book(line);
 		BibleText Bible = BibleText(directory);
 
-		std::queue<int> results; // results of query stored here
-		if (Bible.query(results, line) == 0) {
-			if (results.size() == 0) {
+		auto results = Bible.query(line); // results of query stored here
+		if (results) {
+			if ((*results).size() == 0) {
 				std::cout << "No results" << std::endl;
 			}
 			else {
-				printVerses(results, Bible, queryMode);
+				printVerses(*results, Bible, queryMode);
 			}
 		}
 		else {
@@ -85,6 +92,7 @@ int main(int argc, char **argv) { // notes: create a copy mode for referencing, 
 		int mode = 0;
 		char flag = argv[2][0];
 		std::string line = std::string(argv[3]);
+		capitalise_book(line);
 		if (flag == 's') {
 			mode = 1;
 		}
@@ -98,31 +106,34 @@ int main(int argc, char **argv) { // notes: create a copy mode for referencing, 
 
 			BibleText Bible = BibleText(directory);
 
-			std::queue<int> results; // results of query stored here
-			if (Bible.query(results, line) == 0) {
-				if (results.size() > 0) {
-					printVerses(results, Bible, mode);
+			auto results = Bible.query(line); // results of query stored here
+			if (results) {
+				if ((*results).size() > 0) {
+					printVerses(*results, Bible, mode);
 				}
 				else {
 					std::cout << "No match found" << std::endl;
 				}
 			}
 			else {
-				std::cout << "An error occured" << std::endl;
+				std::cout << "An error occurred" << std::endl;
 			}
 		}
 		else if (mode == 1) { // search
 			BibleSearch WordSearch = BibleSearch(directory);
 
-			std::queue<int> searchResults;
-			WordSearch.verseIDsFromWordSearch(line, searchResults);
-
-			BibleText Bible = BibleText(directory);
-			if (searchResults.size() != 0) {
-				printVerses(searchResults, Bible, mode);
+			auto results = WordSearch.verseIDsFromWordSearch(line);
+			if (results) {
+				BibleText Bible = BibleText(directory);
+				if ((*results).size() != 0) {
+					printVerses(*results, Bible, mode);
+				}
+				else {
+					std::cout << "No search results" << std::endl;
+				}
 			}
 			else {
-				std::cout << "No search results" << std::endl;
+				std::cout << "An error occurred" << std::endl;
 			}
 		}
 		else if (mode == 3) { // copying/referencing

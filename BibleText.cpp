@@ -9,6 +9,7 @@
 #include <regex>
 #include <tuple>
 
+// for error logs
 inline std::string getTime() {
 	auto currentTimePoint = std::chrono::system_clock::now();
     // Convert the time point to a time_t (Unix timestamp)
@@ -21,6 +22,12 @@ inline std::string getTime() {
     // Print the human-readable timestamp
     return buffer;
 }
+void BibleText::logError(const std::string& message) {
+	std::ofstream logfile(directory + "error.log", std::ios_base::app);
+	logfile << message << " (" << getTime() << ")" << std::endl;
+	logfile.close();
+}
+// UTF-8 parsing
 inline size_t getCodePointSize(const std::string& utf8String, size_t index) {
 	unsigned char firstByte = static_cast<unsigned char>(utf8String[index]);
 
@@ -48,12 +55,8 @@ inline std::string readUtf8Character(const std::string& utf8String, size_t& inde
 	}
 	return character;
 }
-void BibleText::logError(const std::string& message) {
-	std::ofstream logfile(directory + "error.log", std::ios_base::app);
-	logfile << message << " (" << getTime() << ")" << std::endl;
-	logfile.close();
-}
 
+// SQLite interfaces
 // provided one int input parameter with int output expected, runs provided sql query on provided database
 int BibleText::oneIntInputOneIntOutput(const char* sql, int input) {
 	int output = -1;
@@ -116,11 +119,12 @@ std::string BibleText::oneIntInputOneStringOutput(const char* sql, int input) {
 	return body;
 }
 // finds whether the given book name matches an entry in the map
+// char by char to make partial matches
 int BibleText::getBookID(std::string book) {
 	std::string search;
 	bool found = false;
 	for (unsigned int i = 0; i < book.length(); i++) {
-		if (book[i] != ' ') {
+		if (book[i] != ' ') { // spaces are ignored
 			search += book[i];
 			if (mappings.count(search) > 0) {
 				found = true;
@@ -205,7 +209,7 @@ int BibleText::verseIDFromReference(std::tuple<int, int, int> ref) {
 	return VerseID;
 }
 // turns a VerseID into the reference that would return it
-void BibleText::fetchReferenceFromVerseID(int VerseID, std::tuple<int, int, int>& reference) {
+std::tuple<int, int, int> BibleText::fetchReferenceFromVerseID(int VerseID) {
 
 	int ChapterID = chapterIDFromVerseID(VerseID);
 
@@ -215,7 +219,7 @@ void BibleText::fetchReferenceFromVerseID(int VerseID, std::tuple<int, int, int>
 
 	int verseOffset = verseOffsetFromChapterAndVerseID(ChapterID, VerseID);
 
-	reference = std::make_tuple(BookID, chapterOffset, verseOffset);
+	return std::make_tuple(BookID, chapterOffset, verseOffset);
 }
 // populates the given Book->ID map according to the given filename
 void BibleText::populateMap(std::string filename) {
@@ -349,7 +353,8 @@ void BibleText::handleFSMOutput(std::queue<int>& queryResults, std::tuple<int, i
 		}
 	}
 }
-int BibleText::FiniteStateMachine(std::queue<int>& queryResults, std::string line) {
+std::optional<std::queue<int>> BibleText::FiniteStateMachine(std::string line) {
+	std::queue<int> queryResults;
 	int rangeStart = -1;
 
 	std::string input;
@@ -598,8 +603,7 @@ int BibleText::FiniteStateMachine(std::queue<int>& queryResults, std::string lin
 		break;
 	case 5: {// book chapter:verse-
 		// a hacky solution for a mostly unimportant but still valid function
-		std::tuple<int, int, int> rangeEnd;
-		fetchReferenceFromVerseID(chapterEndVerseIDFromVerseID(rangeStart), rangeEnd);
+		std::tuple<int, int, int> rangeEnd = fetchReferenceFromVerseID(chapterEndVerseIDFromVerseID(rangeStart));
 		rangeStart = verseIDFromReference(std::make_tuple(book,chapter,verse));
 		handleFSMOutput(queryResults, rangeEnd, rangeStart);
 		break;
@@ -616,37 +620,32 @@ int BibleText::FiniteStateMachine(std::queue<int>& queryResults, std::string lin
 	case 12:
 		rangeStart = verseIDFromReference(std::make_tuple(book,chapter,verse));
 
-		std::tuple<int, int, int> rangeEnd;
 		int endOfBook = bookEndVerseIDFromBookID(getBookID(output));
-		fetchReferenceFromVerseID(endOfBook, rangeEnd);
+		std::tuple<int, int, int> rangeEnd = fetchReferenceFromVerseID(endOfBook);
+
 		handleFSMOutput(queryResults, rangeEnd, rangeStart);
 		break;
 	}
 	if (false) {
 		error:
 		std::cout << "Error in FSM execution, State: " << state << " Input: " << input << " Output: " << output << std::endl;
-		return 1;
+		return std::nullopt;
 	}
-	return 0;
+	return queryResults;
 }
 // returns verseIDs according to the criteria given
-int BibleText::query(std::queue<int>& queryResults, std::string line) {
-	// perferms FSM off line into queryResults
-	if (FiniteStateMachine(queryResults, line) == 0) {
-		return 0;
-	}
-	else {
-		return 1;
-	}
+std::optional<std::queue<int>> BibleText::query(std::string line) {
+	// performs FSM off line into queryResults
+	// this function used to be more than one line, but it is still an interface to a private method of arbitrary implementation
+	return FiniteStateMachine(line);
 }
 // turns VerseID into reference and body in one tuple
-void BibleText::retrieveVerseFromID(int VerseID, std::tuple<std::string, int, int, std::string>& verse) {
-	std::tuple<int, int, int> reference;
-	fetchReferenceFromVerseID(VerseID, reference);
+std::tuple<std::string, int, int, std::string> BibleText::retrieveVerseFromID(int VerseID) {
+	std::tuple<int, int, int> reference = fetchReferenceFromVerseID(VerseID);
 
 	std::string bookName = names[std::get<0>(reference)-1];
 
 	std::string body = fetchBodyFromVerseID(VerseID);
 	//verse = tuple_cat(reference, make_tuple(body));
-	verse = std::make_tuple(bookName, std::get<1>(reference), std::get<2>(reference), body);
+	return std::make_tuple(bookName, std::get<1>(reference), std::get<2>(reference), body);
 }

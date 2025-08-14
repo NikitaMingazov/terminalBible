@@ -1,6 +1,7 @@
 #include <sqlite3.h>
 #include <queue>
 #include <string>
+#include <optional>
 
 #ifndef BibleSearch_H
 #define BibleSearch_H
@@ -10,7 +11,7 @@ class BibleSearch
 public:
 	BibleSearch(const char* directory);
 	~BibleSearch();
-	int verseIDsFromWordSearch(std::string search, std::queue<int>& searchResults);
+	std::optional<std::queue<int>> verseIDsFromWordSearch(std::string search);
 private:
 	sqlite3* searchdb;
 
@@ -26,3 +27,4 @@ private:
 
 
 #endif
+

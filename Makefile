@@ -1,8 +1,8 @@
 CXX = g++
-CXXFLAGS = -std=c++11 -Wall
+CXXFLAGS = -std=c++17 -Wall
 LDFLAGS = -lsqlite3
 
-SOURCES = BibleText.cpp kjv.cpp BibleSearch.cpp
+SOURCES = BibleText.cpp BibleSearch.cpp kjv.cpp
 OBJECTS = $(SOURCES:.cpp=.o)
 EXECUTABLE = kjv
 

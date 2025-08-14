@@ -3,6 +3,7 @@
 #include <string>
 #include <queue>
 #include <tuple>
+#include <optional>
 
 #ifndef BibleText_H
 #define BibleText_H
@@ -13,9 +14,9 @@ public:
 	BibleText(const char* directory);
 	~BibleText();
 	// into the queue provided puts the verses returned by the verse reference given
-	int query(std::queue<int>& queryResults, std::string line);
+	std::optional<std::queue<int>> query(std::string line);
 	// turns VerseID into reference and body in one tuple
-	void retrieveVerseFromID(int VerseID, std::tuple<std::string, int, int, std::string>& verse);
+	std::tuple<std::string, int, int, std::string> retrieveVerseFromID(int VerseID);
 private:
 	std::string directory; // where the files are stored, for logging purposes
 	sqlite3* textdb;
@@ -48,9 +49,9 @@ private:
 	int bookEndVerseIDFromBookID(int BookID);
 	// main database functions
 	void handleFSMOutput(std::queue<int>& queryResults, std::tuple<int, int, int> reference, int &rangeStart);
-	int FiniteStateMachine(std::queue<int>& queryResults, std::string line);
+	std::optional<std::queue<int>> FiniteStateMachine(std::string line);
 	int verseIDFromReference(std::tuple<int, int, int> ref);
-	void fetchReferenceFromVerseID(int VerseID, std::tuple<int, int, int>& reference);
+	std::tuple<int, int, int> fetchReferenceFromVerseID(int VerseID);
 	std::string fetchBodyFromVerseID(int VerseID);
 
 };

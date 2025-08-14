@@ -105,7 +105,8 @@ std::string BibleSearch::parseSearchIntoSqlStatement(std::string search, std::qu
 	return searchQuery;
 }
 // provided a word search, returns the list of matching IDs
-int BibleSearch::verseIDsFromWordSearch(std::string search, std::queue<int>& queryResults) {
+std::optional<std::queue<int>> BibleSearch::verseIDsFromWordSearch(std::string search) {
+	std::queue<int> queryResults;
 
 	std::queue<std::string> parameters;
 	std::string searchQuery = parseSearchIntoSqlStatement(search, parameters);
@@ -114,7 +115,7 @@ int BibleSearch::verseIDsFromWordSearch(std::string search, std::queue<int>& que
 	rc = sqlite3_prepare_v2(searchdb, searchQuery.c_str(), -1, &stmt, &tail);
 	if (rc) {
 		std::cout << "SQL error: " << searchQuery << std::endl;
-		return 1;
+		return std::nullopt;
 	}
 	int counter = 0;
 	while (!parameters.empty()) {
@@ -122,10 +123,11 @@ int BibleSearch::verseIDsFromWordSearch(std::string search, std::queue<int>& que
 		parameters.pop();
 	}
 	//executing query
+	// should I have another if (rc) here?
 	while (sqlite3_step(stmt) == SQLITE_ROW) {
 		queryResults.push(sqlite3_column_int(stmt, 0));
 	}
 	sqlite3_finalize(stmt);
 
-	return 0;
+	return queryResults;
 }
