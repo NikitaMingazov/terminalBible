@@ -5,7 +5,6 @@ Most approaches I've seen for terminal bible queries I've seen use awk on a plai
 ## Build:
 Run the Makefile to build the executable, and use the database in releases, or use the provided scripts to make your own. <br>
 Then to use the executable, it is advised to make a wrapper shell script like this one: <br>
-script like so <br>
 ```
 #!/bin/sh
 directory="/home/username/.local/share/biblesetup"
@@ -16,7 +15,7 @@ additional_args=("$@")
 ```
 and so "kjv s potter" will work properly <br>
 ## Usage:
-Format: ./kjv </data/path> <?flag> <query>
+Format: ./kjv \</data/path\> \<?flag\> \<query\>
 ### Flags:
 'r' is read mode, the default, making flag optional. an example query is "gen 1:32-2:3", where "gen" uniquely identifies "Genesis", and an inter-chapter range is used. chapter-chapter and <ref>;<ref> are currently broken. <br>
 's' uses search mode, it does queries on the database. It supports AND, OR and parenthesis, and spaces are AND so "unto us is" is equivalent to "unto/ANDus/ANDis" (I know the syntax sucks, I was new to linux when I made this). <br>
