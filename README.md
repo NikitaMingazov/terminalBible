@@ -27,4 +27,4 @@ Have the makefile store data and executable into .local/share. <br>
 Use "-s" for flags. <br>
 Expose a C interface for interop. <br>
 Use an automatically generated FSM instead of my manual one. <br>
-Fix the bug for <book0> <subref> ; <book1> <subref> queries, they once worked but broke due to the unmaintainable manual FSM.
+Fix the bug for \<book0\> \<subref\> ; \<book1\> \<subref\> queries, they once worked but broke due to the unmaintainable manual FSM.
