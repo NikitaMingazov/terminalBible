@@ -7,7 +7,7 @@ Run the Makefile to build the executable, and use the database in releases, or u
 Then to use the executable, it is advised to make a wrapper shell script like this one: <br>
 script like so <br>
 ```
-#!/bin/bash
+#!/bin/sh
 directory="/home/username/.local/share/biblesetup"
 executable="kjv"
 data="KJV"
